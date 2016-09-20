@@ -1,0 +1,34 @@
+{
+ "address": "1JeHa67QEvrrFpsSow82fLypw8LoRcmCXk",
+ "description": "Complementary & alternative money demo",
+ "files": {
+  "css/all.css": {
+   "sha512": "f75b490d5dc5c004dfa5aac1fc262565c744f213853645a4f1384068b739ba5a",
+   "size": 391742
+  },
+  "index.html": {
+   "sha512": "28e8d094728b48afe2fd8d8922cc63739daebbc5c991f6826c88c3f455e6cbb4",
+   "size": 10072
+  },
+  "js/all.js": {
+   "sha512": "a3b31999f52e82d29fa2e114a78ed807f9a018b2feb19c0fe5e7ddef16b69955",
+   "size": 1588407
+  }
+ },
+ "ignore": "(js|css|.idea)/(?!all.(js|css))",
+ "inner_path": "content.json",
+ "modified": 1474370785.416123,
+ "postmessage_nonce_security": true,
+ "sign": [
+  36485162056650349794530615404299346683404388385480867159302254737916786342376,
+  55990183526019126262933073356653311850739660574403049415727444545880853077918
+ ],
+ "signers_sign": "HKCAdoe7JxILoKnbuGqPlHvPjsCAsby4hJg9BZ4v3tsVR9vQ3vfXwOzy0FdL+Os9uc7Jlp9vLCONSIKKh/gI1Y4=",
+ "signs": {
+  "1JeHa67QEvrrFpsSow82fLypw8LoRcmCXk": "G5bsGV/toF0czJjZiQ/T6KYWKXm9uq1fTduypOnQUK1l0FrSqOPCRSfaOCX4jHujT6XIfBaGnxx4f5LTXWWTAa4="
+ },
+ "signs_required": 1,
+ "title": "Money Network",
+ "viewport": "width=device-width, initial-scale=1.0",
+ "zeronet_version": "0.4.1"
+}

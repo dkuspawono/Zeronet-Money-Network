@@ -1,0 +1,121 @@
+/*
+  max/min-width breakpoints: 320, 360, 480, 533, 600, 640, 768, 800, 1024 and 1280.
+*/
+
+
+html {
+    overflow-x: hidden;
+}
+
+body {
+    max-width: 1024px;
+}
+
+div {
+    float: left;
+    margin-left: 0px;
+    margin-left: 0px;
+}
+
+.wrapper {
+    width: 100%;
+}
+
+header {
+    width: 100%
+}
+
+.cookie_note {
+    width: 100%;
+}
+
+ul {
+    list-style-type: none;
+    margin: 0;
+    padding: 0;
+}
+
+form {
+    width: 100%
+}
+
+/* cross browser break word - not working for opera 12 - see JS methods find_overflow & hyphenate_div */
+.wrapword {
+    white-space: -moz-pre-wrap !important; /* Mozilla, since 1999 */
+    white-space: -o-pre-wrap; /* Opera 7 */
+    white-space: pre-wrap; /* css-3 */
+    word-wrap: break-word; /* Internet Explorer 5.5+ */
+    word-break: break-all;
+    white-space: normal;
+}
+
+/* bigger links on smartphones and tables */
+@media screen and (max-width: 799px) {
+    a {
+        font-size: 135%
+    }
+}
+
+/* responsive main menu in page header. 1*6 (big screens) or 2*3 (small screens) */
+
+.main-menu-2-lines {
+    display: none
+}
+
+.main-menu-1-line {
+    display: inline;
+    width: 56%;
+}
+
+@media screen and (max-width: 440px) {
+    .main-menu-2-lines {
+        display: inline;
+        width: 83%;
+    }
+
+    .main-menu-1-line {
+        display: none
+    }
+}
+
+@media screen and (min-width: 441px) and (max-width: 599px) {
+    .main-menu-2-lines {
+        display: inline;
+        width: 67%;
+    }
+
+    .main-menu-1-line {
+        display: none
+    }
+}
+
+@media screen and (min-width: 600px) and (max-width: 799px) {
+    .main-menu-2-lines {
+        display: inline;
+        width: 40%;
+    }
+
+    .main-menu-1-line {
+        display: none
+    }
+}
+
+@media screen and (min-width: 800px) {
+    .main-menu-2-lines {
+        display: none
+    }
+
+    .main-menu-1-line {
+        display: inline;
+        width: 56%;
+    }
+}
+
+#betatest {
+    position: fixed;
+    bottom: 0;
+    width: 100%;
+    height: 16px;
+    background-color: rgba(255, 255, 255, 1);
+    background-image: url('/images/betatest.png');
+}

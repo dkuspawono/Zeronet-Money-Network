@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html ng-app="MoneyNetwork" ng-controller="NavCtrl as n">
+<head>
+    <title ng-bind="n.texts.appname">Money Network loading</title>
+    <link rel="stylesheet" media="all" href="css/all.css"/>
+    <script type="text/ng-template" id="about.html">
+        <p>
+            Money Network is about money.
+            With inspiration from <a href="http://charleseisenstein.net/" target="_blank">Charles Eisenstein</a> and
+            <a href="http://www.lietaer.com/" target="_blank">Bernard Lietaer</a>.
+            Money is everywhere, money is everything and everything is money.
+            This is an attempt to make money free. Make is easier to use complementare money. No more Hammerville.
+        </p>
+        <br/>
+        <p>
+            Summary:
+        <ul style="list-style-type:disc">
+            <li>No registration. User info on client is only for contact info between clients</li>
+            <li>Search for contracts in network. Server returns possible contacts</li>
+            <li>Free money definition. Use existing money definitions from network or create your own type of money</li>
+            <li>Use money to exchange goods and services. Transactions are stored encrypted in block chains or on
+                server
+            </li>
+            <li>Full client side encryption. Everything is full client side encrypted except search for contracts</li>
+            <li>A client network. Data on clients. Minimum data on servers. Servers are used for communication between
+                clients
+            </li>
+            <li>Open source. There It is nothing swept under the carpet. Feel free to download, modify and make your own
+                website
+                or app
+            </li>
+        </ul>
+        </p>
+    </script>
+    <script type="text/ng-template" id="auth.html">
+        <p>
+            Login is used to protect data stored in your browser. Password and your data is stored encrypted in your
+            browser / on
+            your device. Not on a server.
+        </p>
+
+        <form ng-hide="a.is_logged_in()" name="device_login_form" ng-submit="a.login_or_register()">
+            <table>
+                <thead>
+                <tr>
+                    <th></th>
+                    <th style="width:52px"></th>
+                    <th style="width:52px"></th>
+                    <th style="width:52px"></th>
+                    <th></th>
+                </tr>
+                </thead>
+
+                <tbody>
+                <tr>
+                    <td></td>
+                    <td colspan="4">
+                        Log in <input type="radio" ng-model="a.register" value="N"> &nbsp;&nbsp;
+                        Register <input type="radio" ng-model="a.register" value="Y">
+                    </td>
+                </tr>
+                <tr>
+                    <td>Password</td>
+                    <td colspan="3">
+                        <input type="password" name="device_password" ng-model="a.device_password"
+                               required ng-minlength="10" ng-maxlength="50" placeholder="Enter password"
+                               style="width: 120px">
+                    </td>
+                    <td><input type="submit" value="Log in" ng-hide="ctrl.register" ng-disabled="a.login_disabled()">
+                    </td>
+                </tr>
+                <tr ng-show="device_login_form.device_password.$error.required">
+                    <td colspan="5">Password is a required field</td>
+                </tr>
+                <tr ng-show="device_login_form.device_password.$error.minlength">
+                    <td colspan="5">Minimum password length is 10</td>
+                </tr>
+                <tr ng-show="device_login_form.device_password.$error.maxlength">
+                    <td colspan="5">Maximum password length is 50</td>
+                </tr>
+                </tbody>
+
+                <tbody ng-show="a.register == 'Y'">
+                <tr>
+                    <td>Confirm<br>password</td>
+                    <td colspan="3">
+                        <input type='password' name="confirm_device_password" ng-model="a.confirm_device_password"
+                               placeholder="Confirm password"
+                               style="width: 120px">
+                    </td>
+                    <td><input ng-show="a.register" type="submit" value="Register" ng-disabled="a.register_disabled()">
+                    </td>
+                </tr>
+                <tr ng-show="a.confirm_device_password != a.device_password">
+                    <td colspan="5">Passwords do not match</td>
+                </tr>
+                </tbody>
+
+                <tbody>
+                <tr>
+                    <td></td>
+                    <td colspan="4">{{a.login_or_register_error}}</td>
+                </tr>
+                </tbody>
+
+            </table>
+        </form>
+
+        <p ng-show="a.register == 'Y'">
+            Please choose a secure password (10-50 characters) and do <b>NOT</b> forget or lose it.
+            Remember your password. There is <b>NO</b> help if you forget your password.
+            Use "Register" after forgotten password to create a new empty account.
+        </p>
+
+
+        <div style="width: 100%">
+            <hr>
+        </div>
+    </script>
+    <script type="text/ng-template" id="contacts.html">
+        contacts.html
+    </script>
+    <script type="text/ng-template" id="home.html">
+        home.html
+    </script>
+    <script type="text/ng-template" id="user.html">
+        <p>
+            It is not required but you should add some info to identify you as user in the Money Network.
+            It could be name, email, phone number, foto, company name, url, GPS location or whatever.
+            Real or fake values. User info are stored locally in your browser / on your device and are NOT validated by
+            anyone.
+            The info is used when searching for contacts, verifying contacts and displayed in contact list.
+            You decide what information that is revealed to other users in the Money Network.
+            You decide when to trust other users in the Money Network.
+        </p>
+        <p>
+            User identification
+        </p>
+        <table border="1">
+            <thead>
+            <tr>
+                <th style="text-align: center">Tag</th>
+                <th style="text-align: center">Value</th>
+                <th style="text-align: center">Privacy</th>
+                <th></th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr ng-repeat="x in u.user_info">
+                <td>
+                    <input type="text" ng-model="x.tag"
+                           uib-typeahead="tag for tag in u.tags | filter:$viewValue | limitTo:8"
+                           class="form-control" style="width: 80px">
+                </td>
+                <td><input type="text" ng-model="x.value" class="form-control"></td>
+                <td><select ng-model="x.privacy" ng-options="o.privacy for o in u.privacy_options"
+                            style="width: 100px"></select></td>
+                <td>
+                    <span class="glyphicon glyphicon-plus"></span>
+                    <span class="glyphicon glyphicon-remove"></span>
+                </td>
+            </tr>
+            </tbody>
+        </table>
+    </script>
+
+</head>
+<body>
+
+<div class="navbar navbar-fluid-top">
+
+    <div class="navbar-inner">
+        <div class="container-fluid">
+            <a class="btn btn-navbar" data-target=".nav-collapse" data-toggle="collapse">
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+            </a>
+            <a class="brand" href="#/home">{{n.texts.appname}}</a>
+
+            <div class="container-fluid nav-collapse">
+                <table class="main-menu-1-line">
+                    <tbody>
+                    <tr>
+                        <td>
+                            <ul class="nav">
+                                <li><a href="#/home">Home</a></li>
+                                <li><a href="#/user">Account</a></li>
+                                <li><a href="#/contacts">Contacts</a></li>
+                                <li><a href="#/auth">Log in</a></li>
+                                <li><a href="#/logout">Log out</a></li>
+                                <li><a href="#/about">About</a></li>
+                            </ul>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+
+                <table class="main-menu-2-lines">
+                    <tbody>
+                    <tr>
+                        <td>
+                            <ul class="nav">
+                                <li><a href="#/home">Home</a></li>
+                                <li><a href="#/user">Account</a></li>
+                                <li><a href="#/contacts">Contacts</a></li>
+                            </ul>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <ul class="nav">
+                                <li><a href="#/auth">Log in</a></li>
+                                <li><a href="#/logout">Log out</a></li>
+                                <li><a href="#/about">About</a></li>
+                            </ul>
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+
+            </div>
+            <!--/.nav-collapse -->
+        </div>
+    </div>
+</div>
+
+<div class="container-fluid" style="width: 100%">
+    <div class="row-fluid">
+        <div class="span9">
+
+            <div ng-view style="width: 100%"></div>
+
+        </div>
+    </div>
+    <!--/row-->
+
+    <footer>
+        <div style="width: 100%">
+            <p>
+                todo: add footer text
+            </p>
+        </div>
+    </footer>
+
+</div>
+
+<script type="text/javascript" src="js/all.js" async></script>
+
+</body>
+</html>
