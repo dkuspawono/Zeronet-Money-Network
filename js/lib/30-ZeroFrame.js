@@ -1,3 +1,8 @@
+// from ZeroNet site development tutorial #1
+// https://zeronet.readthedocs.io/en/latest/site_development/zeroframe_api_reference/
+// http://127.0.0.1:43110/Blog.ZeroNetwork.bit/?Post:43:ZeroNet+site+development+tutorial+1
+// http://127.0.0.1:43110/Blog.ZeroNetwork.bit/data/files/ZeroFrame.coffee
+
 var ZeroFrame,
     bind = function(fn, me){ return function(){ return fn.apply(me, arguments); }; },
     slice = [].slice;

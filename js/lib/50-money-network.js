@@ -28,6 +28,31 @@ var MoneyNetworkHelper = (function () {
 
     // local or session storage functions ==>
 
+    // sessionStorage and localStorage implementation. not working in ZeroNet. Error: The operation is insecure
+
+    // sessionStorage.
+    var session_storage = {} ;
+
+    // localStorage javascript copy. used in ZeroFrame interface.
+    var local_storage = {} ;
+    var local_storage_dirty = false ; // true: pending updates to ZeroFrame localStorage. Please call
+
+    function is_local_storage_dirty() {
+        return local_storage_dirty ;
+    }
+    function local_storage_not_dirty() {
+        local_storage_dirty = false ;
+    }
+    // return local_storage. used in wrapperSetLocalStorage. copy javascript object to localStorage
+    function get_local_storage() {
+        return local_storage ;
+    }
+    // load local storage javascript object from localStorage. ZeroFrame implementation. Callback used in wrapperGetLocalStorage
+    function set_local_storage (res) {
+        if (!res) res = {} ;
+        local_storage = res ;
+    }
+
     // values in sessionStorage:
     // - data are discarded when user closes browser tab
     // - only userid and password keys
@@ -169,8 +194,8 @@ var MoneyNetworkHelper = (function () {
             }
             value = storage_flag + value;
             // save
-            if (session) sessionStorage.setItem(key, value);
-            else localStorage.setItem(key, value);
+            if (session) session_storage[key] = value; // sessionStorage.setItem(key, value);
+            else {local_storage[key] = value ; local_storage_dirty = true }; // localStorage.setItem(key, value);
         }, null);
     } // lzma_compress1
     function lzma_compress0(key, value, session, password, length) {
@@ -195,8 +220,8 @@ var MoneyNetworkHelper = (function () {
                 }
                 value = storage_flag + value;
                 // save
-                if (session) sessionStorage.setItem(key, value);
-                else localStorage.setItem(key, value);
+                if (session) session_storage[key] = value; // sessionStorage.setItem(key, value);
+                else { local_storage[key] = value ; local_storage_dirty = true }; // localStorage.setItem(key, value);
                 length = value.length - 1;
             }
             ;
@@ -257,7 +282,7 @@ var MoneyNetworkHelper = (function () {
             key = userid + '_' + key;
         }
         // read stored value
-        var value = rule.session ? sessionStorage.getItem(key) : localStorage.getItem(key);
+        var value = rule.session ? session_storage[key] : local_storage[key]; // localStorage.getItem(key);
         if ((typeof value == 'undefined') || (value == null) || (value == '')) return null; // key not found
 
         // get storage flag - how was data stored - first character in value
@@ -364,8 +389,8 @@ var MoneyNetworkHelper = (function () {
         value = storage_flag + value;
         // save
         // if (key.match(/oauth/)) console.log('setItem. key = ' + key + ', value = ' + value) ;
-        if (rule.session) sessionStorage.setItem(key, value);
-        else localStorage.setItem(key, value);
+        if (rule.session) session_storage[key] = value; // sessionStorage.setItem(key, value);
+        else {local_storage[key] = value ; local_storage_dirty = true}; // localStorage.setItem(key, value);
         // optimize compression for saved value
 
         // todo: disabled until I find a method to convert byte array returned from LZMA.compress into an valid utf-16 string
@@ -377,8 +402,6 @@ var MoneyNetworkHelper = (function () {
         var pgm = 'MoneyNetworkHelper.setItem: ';
         var pseudo_key = key.match(/^gift_[0-9]+$/) ? 'gifts' : key; // use gifts rule for gift_1, gift_1 etc
         var rule = get_local_storage_rule(pseudo_key);
-        // sessionStorage or localStorage?
-        var storage = rule.session ? sessionStorage : localStorage;
         // userid prefix?
         if (rule.userid) {
             var userid = getItem('userid');
@@ -391,8 +414,8 @@ var MoneyNetworkHelper = (function () {
             key = userid + '_' + key;
         }
         // remove
-        if (rule.session) sessionStorage.removeItem(key);
-        else localStorage.removeItem(key);
+        if (rule.session) session_storage.delete(key); // sessionStorage.removeItem(key);
+        else {local_storage.delete(key); local_storage_dirty=true}; // localStorage.removeItem(key);
     } // removeItem
 
     function getUserId() {
@@ -540,6 +563,10 @@ var MoneyNetworkHelper = (function () {
     console.log('MoneyNetworkHelper object initialised');
     return {
         // local storage helpers
+        is_local_storage_dirty: is_local_storage_dirty,
+        local_storage_not_dirty: local_storage_not_dirty,
+        get_local_storage: get_local_storage,
+        set_local_storage: set_local_storage,
         getItem: getItem,
         setItem: setItem,
         removeItem: removeItem,
@@ -560,6 +587,7 @@ var MoneyNetworkHelper = (function () {
 angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize'])
 
     .config(['$routeProvider', function ($routeProvider) {
+
         // resolve: check if user is logged. check is used in multiple routes
         var check_auth_resolve = ['$location', function ($location) {
             if (!MoneyNetworkHelper.getUserId()) {
@@ -649,6 +677,8 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize'])
 
         ZeroFrameService.prototype.init = function () {
             this.addLine("inited! (2)");
+            // Make ZeroNet localStorage data available for MoneyNetworkHelper (copy?)
+            this.cmd("wrapperGetLocalStorage", [], MoneyNetworkHelper.set_local_storage) ;
         };
 
         ZeroFrameService.prototype.addLine = function (line) {
@@ -668,6 +698,7 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize'])
             })(this));
         };
 
+        // test "serverInfo" call
         ZeroFrameService.prototype.serverInfo = function (e) {
             this.cmd("serverInfo", {}, (function (_this) {
                 return function (server_info) {
@@ -675,6 +706,13 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize'])
                 };
             })(this));
             return 'serverInfo request send to server' ;
+        };
+
+        // save localStorage (ZeroFrame implementation). Should be called after every change in localStorage
+        ZeroFrameService.prototype.write_local_storage = function (e) {
+            if (!MoneyNetworkHelper.is_local_storage_dirty()) return ;
+            this.cmd("wrapperSetLocalStorage", MoneyNetworkHelper.get_local_storage()) ;
+            MoneyNetworkHelper.local_storage_not_dirty() ;
         };
 
         return new ZeroFrameService();
