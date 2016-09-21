@@ -52970,18 +52970,18 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize'])
             console.log(line);
         };
 
-        ZeroFrameService.prototype.onOpenWebsocket = function (e) {
-            this.cmd("serverInfo", {}, (function (_this) {
-                return function (server_info) {
-                    return _this.addLine("serverInfo response (2): <pre>" + JSON.stringify(server_info, null, 2) + "</pre>");
-                };
-            })(this));
-            this.cmd("siteInfo", {}, (function (_this) {
-                return function (site_info) {
-                    return _this.addLine("siteInfo response (2): <pre>" + JSON.stringify(site_info, null, 2) + "</pre>");
-                };
-            })(this));
-        };
+        //ZeroFrameService.prototype.onOpenWebsocket = function (e) {
+        //    this.cmd("serverInfo", {}, (function (_this) {
+        //        return function (server_info) {
+        //            return _this.addLine("serverInfo response (2): <pre>" + JSON.stringify(server_info, null, 2) + "</pre>");
+        //        };
+        //    })(this));
+        //    this.cmd("siteInfo", {}, (function (_this) {
+        //        return function (site_info) {
+        //            return _this.addLine("siteInfo response (2): <pre>" + JSON.stringify(site_info, null, 2) + "</pre>");
+        //        };
+        //    })(this));
+        //};
 
         // save localStorage (ZeroFrame implementation). Should be called after every change in localStorage
         ZeroFrameService.prototype.write_local_storage = function (e) {
@@ -53094,10 +53094,12 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize'])
         self.login_or_register = function () {
             var pgm = controller + '.login_or_register: ';
             self.login_or_register_error = '';
-            var create_new_account = (self.register = 'Y');
+            var create_new_account = (self.register == 'Y');
             var userid = MoneyNetworkHelper.client_login(self.device_password, create_new_account);
             if (userid == 0) {
-                self.login_or_register_error = 'Invalid password';
+                var error = 'Invalid password' ;
+                self.login_or_register_error = error;
+                zeroFrameService.notification('error', error);
             }
             else {
                 // clear login form
@@ -53105,12 +53107,24 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize'])
                 self.device_password = '';
                 self.confirm_device_password = '';
                 self.register = 'N';
-                // console.log(pgm + 'send_oauth was called') ;
                 $location.path('/home');
                 $location.replace();
             }
         };
 
-    }]);
+    }])
+
+    .controller('UserCtrl', ['MoneyNetworkService', function(moneyNetworkService) {
+        var self = this;
+        var controller = 'UserCtrl';
+        console.log(controller + ' loaded');
+
+        self.user_info = moneyNetworkService.get_user_info() ; // array with tags and values
+        self.tags = moneyNetworkService.get_tags() ; // typeahead autocomplete functionality
+        self.privacy_options = moneyNetworkService.get_privacy_options() ; // select options with privacy settings for user info
+
+    }])
+
+;
 
 // angularJS app end
