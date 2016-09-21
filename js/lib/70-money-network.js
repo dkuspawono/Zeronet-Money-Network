@@ -584,7 +584,7 @@ var MoneyNetworkHelper = (function () {
 
 
 // angularJS app
-angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize'])
+angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
 
     .config(['$routeProvider', function ($routeProvider) {
 
