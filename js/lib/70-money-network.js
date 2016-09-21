@@ -414,8 +414,8 @@ var MoneyNetworkHelper = (function () {
             key = userid + '_' + key;
         }
         // remove
-        if (rule.session) session_storage.delete(key); // sessionStorage.removeItem(key);
-        else {local_storage.delete(key); local_storage_dirty=true}; // localStorage.removeItem(key);
+        if (rule.session) delete session_storage[key]; // sessionStorage.removeItem(key);
+        else {delete local_storage[key]; local_storage_dirty=true}; // localStorage.removeItem(key);
     } // removeItem
 
     function getUserId() {
@@ -618,7 +618,7 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize'])
             .when('/logout', {
                 resolve: {
                     logout: ['$location', function ($location) {
-                        if (MoneyNetworkHelper.getUserId()) MoneyNetworkHelper.setFlashMessage('success', 'Log out OK') ;
+                        if (MoneyNetworkHelper.getUserId()) MoneyNetworkHelper.setFlashMessage('done', 'Log out OK') ;
                         else MoneyNetworkHelper.setFlashMessage('info', 'Already logged out') ;
                         MoneyNetworkHelper.client_logout();
                         $location.path('/auth');
@@ -639,7 +639,7 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize'])
         // end config (ng-routes)
     }])
 
-    // trying to make a angularJS service from ZeroFrame API
+    // create an angularJS service from ZeroFrame API
     .factory('ZeroFrameService', [function () {
 
         var self = this;
@@ -698,16 +698,6 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize'])
             })(this));
         };
 
-        // test "serverInfo" call
-        ZeroFrameService.prototype.serverInfo = function (e) {
-            this.cmd("serverInfo", {}, (function (_this) {
-                return function (server_info) {
-                    return _this.addLine("serverInfo response (3): <pre>" + JSON.stringify(server_info, null, 2) + "</pre>");
-                };
-            })(this));
-            return 'serverInfo request send to server' ;
-        };
-
         // save localStorage (ZeroFrame implementation). Should be called after every change in localStorage
         ZeroFrameService.prototype.write_local_storage = function (e) {
             if (!MoneyNetworkHelper.is_local_storage_dirty()) return ;
@@ -715,8 +705,72 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize'])
             MoneyNetworkHelper.local_storage_not_dirty() ;
         };
 
+        // flash message / notification via ZeroFrame API
+        ZeroFrameService.prototype.notification = function (type, message, timeout) {
+            if (!timeout) timeout=3000 ;
+            this.cmd("wrapperNotification", [type, message, timeout]) ;
+        };
+
         return new ZeroFrameService();
     }])
+
+
+    .factory('MoneyNetworkService', ['ZeroFrameService', function(zeroFrameService) {
+        var self = this;
+        var service = 'MoneyNetworkService' ;
+        console.log(service + ' loaded') ;
+
+        function show_old_flash () {
+            if (MoneyNetworkHelper.getFlashMessage()) {
+                zeroFrameService.notification(MoneyNetworkHelper.getFlashType(), MoneyNetworkHelper.getFlashMessage());
+                MoneyNetworkHelper.clearFlashMessage() ;
+            };
+        } // show_old_flash
+
+        // startup tag cloud. Tags should be created by users and shared between contacts.
+        // Used in typeahead autocomplete functionality http://angular-ui.github.io/bootstrap/#/typeahead
+        var tags = ['Name', 'Email', 'Phone', 'Photo', 'Company', 'URL', 'GPS'];
+        function get_tags() {
+            return tags ;
+        }
+
+        // user info. Array with tag, value and privacy.
+        // saved in localStorage. Shared with contacts and server depending privacy choice
+        var user_info = [ { tag: 'Name', value: 'John Doe', privacy: 'search'}, { tag: '', value: '', privacy: ''}] ;
+        function get_user_info () {
+            return user_info ;
+        }
+
+        // privacy option for user info
+        // 0 - private - private, hidden information. Never send to server or other users.
+        // 1 - search - search word is stored on server together with a random public key.
+        //              server will match search words and return matches to clients
+        // 2 - public - info send to other contact after search match. Info is show in contact suggestions (public profile)
+        // 3 - unverified - info send to other unverified contact after adding contact to contact list (show more contact info)
+        // 4 - verified cotact- send to verified contact after verification through a secure canal (show more contact info)
+
+        // todo: change to a protected typeahead text field. User should not use two different input methods. Typehead text field is faster
+
+        var privacy_options = [
+            { level: 0, privacy: 'Private',   description: 'Private. Stored on client. Not send to anyone'},
+            { level: 1, privacy: 'Search',    description: 'Search word. Send to server for matching with other users'},
+            { level: 2, privacy: 'Public',    description: 'Public profile. Send to other contact after search word match'},
+            { level: 3, privacy: 'Untrusted', description: 'Unsecure private profile. Send to other contact after adding contact to contact list'},
+            { level: 4, privacy: 'Trusted',   description: 'Private profile. Send to other contact after verification through a secure canal'}
+        ] ;
+        function get_privacy_options () {
+            return privacy_options ;
+        }
+
+        return {
+            show_old_flash: show_old_flash,
+            get_tags: get_tags,
+            get_privacy_options: get_privacy_options,
+            get_user_info: get_user_info
+        };
+        // end MoneyNetworkService
+    }])
+
 
     .controller('NavCtrl', ['ZeroFrameService', function (zeroFrameService) {
         var self = this;
@@ -724,19 +778,54 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize'])
         console.log(controller + ' loaded');
         self.texts = {appname: 'Money Network'};
 
-        // test ZeroFrameService
-        var server_info ;
-        server_info = zeroFrameService.serverInfo() ;
-        console.log(controller + ': server_info = ' + server_info) ;
-
     }])
 
-    .controller('AuthCtrl', [function () {
+    .controller('AuthCtrl', ['$location', 'ZeroFrameService', 'MoneyNetworkService', function ($location, zeroFrameService, moneyNetworkService) {
         var self = this;
         var controller = 'AuthCtrl';
         console.log(controller + ' loaded');
-    }])
 
-;
+        moneyNetworkService.show_old_flash() ;
+
+        self.is_logged_in = function () {
+            return MoneyNetworkHelper.getUserId();
+        };
+        self.register = self.is_logged_in() ? '' : 'N';
+        self.login_disabled = function () {
+            if (self.register != 'N') return true;
+            if (!self.device_password) return true;
+            if (self.device_password.length < 10) return true;
+            if (self.device_password.length > 50) return true;
+            return false;
+        };
+        self.register_disabled = function () {
+            if (self.register != 'Y') return true;
+            if (!self.device_password) return true;
+            if (self.device_password.length < 10) return true;
+            if (self.device_password.length > 50) return true;
+            if (!self.confirm_device_password) return true;
+            return (self.device_password != self.confirm_device_password);
+        };
+        self.login_or_register = function () {
+            var pgm = controller + '.login_or_register: ';
+            self.login_or_register_error = '';
+            var create_new_account = (self.register = 'Y');
+            var userid = MoneyNetworkHelper.client_login(self.device_password, create_new_account);
+            if (userid == 0) {
+                self.login_or_register_error = 'Invalid password';
+            }
+            else {
+                // clear login form
+                zeroFrameService.notification('done', 'Log in OK');
+                self.device_password = '';
+                self.confirm_device_password = '';
+                self.register = 'N';
+                // console.log(pgm + 'send_oauth was called') ;
+                $location.path('/home');
+                $location.replace();
+            }
+        };
+
+    }]);
 
 // angularJS app end
