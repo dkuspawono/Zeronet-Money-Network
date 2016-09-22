@@ -639,14 +639,15 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
         // end config (ng-routes)
     }])
 
-    // create an angularJS service from ZeroFrame API
+
+    // wrap ZeroNet ZeroFrame API in an angularJS service - https://zeronet.readthedocs.io/en/latest/site_development/zeroframe_api_reference/
     .factory('ZeroFrameService', [function () {
 
         var self = this;
         var service = 'ZeroFrameService';
         console.log(service + ' loaded');
 
-        // copy/paste from ZeroChat example. Original example in coffee script
+        // copy/paste from ZeroChat.coffee example - https://bit.no.com:43110/Blog.ZeroNetwork.bit/?Post:43:ZeroNet+site+development+tutorial+1
         var bind = function (fn, me) {
                 return function () {
                     return fn.apply(me, arguments);
@@ -676,7 +677,6 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
         }
 
         ZeroFrameService.prototype.init = function () {
-            this.addLine("inited! (2)");
             // Make ZeroNet localStorage data available for MoneyNetworkHelper (copy?)
             this.cmd("wrapperGetLocalStorage", [], MoneyNetworkHelper.set_local_storage) ;
         };
@@ -684,19 +684,6 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
         ZeroFrameService.prototype.addLine = function (line) {
             console.log(line);
         };
-
-        //ZeroFrameService.prototype.onOpenWebsocket = function (e) {
-        //    this.cmd("serverInfo", {}, (function (_this) {
-        //        return function (server_info) {
-        //            return _this.addLine("serverInfo response (2): <pre>" + JSON.stringify(server_info, null, 2) + "</pre>");
-        //        };
-        //    })(this));
-        //    this.cmd("siteInfo", {}, (function (_this) {
-        //        return function (site_info) {
-        //            return _this.addLine("siteInfo response (2): <pre>" + JSON.stringify(site_info, null, 2) + "</pre>");
-        //        };
-        //    })(this));
-        //};
 
         // save localStorage (ZeroFrame implementation). Should be called after every change in localStorage
         ZeroFrameService.prototype.write_local_storage = function (e) {
@@ -735,29 +722,20 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
         }
 
         // user info. Array with tag, value and privacy.
-        // saved in localStorage. Shared with contacts and server depending privacy choice
-        var user_info = [ { tag: 'Name', value: 'John Doe', privacy: 'search'}, { tag: '', value: '', privacy: ''}] ;
+        // saved in localStorage. Shared with contacts depending on privacy choice
+        var user_info = [ { tag: 'Name', value: 'John Doe', privacy: 'Search'}, { tag: '', value: '', privacy: ''}] ;
         function get_user_info () {
             return user_info ;
         }
 
         // privacy option for user info
-        // 0 - private - private, hidden information. Never send to server or other users.
-        // 1 - search - search word is stored on server together with a random public key.
-        //              server will match search words and return matches to clients
-        // 2 - public - info send to other contact after search match. Info is show in contact suggestions (public profile)
-        // 3 - unverified - info send to other unverified contact after adding contact to contact list (show more contact info)
-        // 4 - verified cotact- send to verified contact after verification through a secure canal (show more contact info)
-
-        // todo: change to a protected typeahead text field. User should not use two different input methods. Typehead text field is faster
-
-        var privacy_options = [
-            { level: 0, privacy: 'Private',   description: 'Private. Stored on client. Not send to anyone'},
-            { level: 1, privacy: 'Search',    description: 'Search word. Send to server for matching with other users'},
-            { level: 2, privacy: 'Public',    description: 'Public profile. Send to other contact after search word match'},
-            { level: 3, privacy: 'Untrusted', description: 'Unsecure private profile. Send to other contact after adding contact to contact list'},
-            { level: 4, privacy: 'Trusted',   description: 'Private profile. Send to other contact after verification through a secure canal'}
-        ] ;
+        // Search - search word is stored on server together with a random public key.
+        //          server will match search words and return matches to clients
+        // Public - info send to other contact after search match. Info is show in contact suggestions (public profile)
+        // Unverified - info send to other unverified contact after adding contact to contact list (show more contact info)
+        // Verified - send to verified contact after verification through a secure canal (show more contact info)
+        // Hidden - private, hidden information. Never send to server or other users.
+        var privacy_options = ['Search', 'Public', 'Unverified', 'Verified', 'Hidden'] ;
         function get_privacy_options () {
             return privacy_options ;
         }
@@ -779,6 +757,7 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
         self.texts = {appname: 'Money Network'};
 
     }])
+
 
     .controller('AuthCtrl', ['$location', 'ZeroFrameService', 'MoneyNetworkService', function ($location, zeroFrameService, moneyNetworkService) {
         var self = this;
@@ -829,7 +808,8 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
 
     }])
 
-    .controller('UserCtrl', ['MoneyNetworkService', function(moneyNetworkService) {
+
+    .controller('UserCtrl', ['$scope', 'MoneyNetworkService', function($scope, moneyNetworkService) {
         var self = this;
         var controller = 'UserCtrl';
         console.log(controller + ' loaded');
@@ -838,6 +818,42 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
         self.tags = moneyNetworkService.get_tags() ; // typeahead autocomplete functionality
         self.privacy_options = moneyNetworkService.get_privacy_options() ; // select options with privacy settings for user info
 
+        // add empty rows to user info table.
+        self.insert_row = function(row) {
+            var pgm = controller + '.insert_row: ' ;
+            var index ;
+            for (var i=0 ; i<self.user_info.length ; i++) if (self.user_info[i].$$hashKey == row.$$hashKey) index = i ;
+            index = index + 1 ;
+            console.log(pgm + 'row = ' + JSON.stringify(row)) ;
+            console.log(pgm + 'adding new user_info row at index ' + index) ;
+            self.user_info.splice(index, 0, { tag: '', value: '', privacy: ''});
+            $scope.$apply();
+        };
+
+    }])
+
+
+    // catch key enter event in user info table (insert new empty row in table)
+    // also cacthing on key tab event for last row in table (insert row empty row at end of table)
+    // used for UserCtl.insert_row
+    // http://stackoverflow.com/questions/17470790/how-to-use-a-keypress-event-in-angularjs
+    // https://gist.github.com/singhmohancs/317854a859098bffe9477f59eac8d915
+    .directive('onKeyEnter', ['$parse', function($parse) {
+        return {
+            restrict: 'A',
+            link: function(scope, element, attrs) {
+                element.bind('keydown keypress', function(event) {
+                    if ((event.which === 13) || ((event.which === 9) && scope.$last)) {
+                        var attrValue = $parse(attrs.onKeyEnter);
+                        (typeof attrValue === 'function') ? attrValue(scope) : angular.noop();
+                        event.preventDefault();
+                    }
+                });
+                scope.$on('$destroy', function() {
+                    element.unbind('keydown keypress')
+                })
+            }
+        };
     }])
 
 ;

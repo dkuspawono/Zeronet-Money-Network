@@ -153,10 +153,12 @@
                            class="form-control" style="width: 80px">
                 </td>
                 <td><input type="text" ng-model="x.value" class="form-control"></td>
-                <td><select ng-model="x.privacy" ng-options="o.privacy for o in u.privacy_options"
-                            style="width: 100px"></select></td>
                 <td>
-                    <span class="glyphicon glyphicon-plus"></span>
+                    <input type="text" ng-model="x.privacy" on-key-enter="u.insert_row(x)"
+                           uib-typeahead="privacy for privacy in u.privacy_options | filter:$viewValue | limitTo:8"
+                           class="form-control" style="width: 80px">
+                </td>
+                <td>
                     <span class="glyphicon glyphicon-remove"></span>
                 </td>
             </tr>
