@@ -3,6 +3,8 @@
 <head>
     <title ng-bind="n.texts.appname">Money Network loading</title>
     <link rel="stylesheet" media="all" href="css/all.css"/>
+
+    <!-- angularJS templates - subpages in single page site -->
     <script type="text/ng-template" id="about.html">
         <p>
             Money Network is about money.
@@ -31,7 +33,9 @@
             </li>
         </ul>
         </p>
+        <!-- end about.html -->
     </script>
+
     <script type="text/ng-template" id="auth.html">
         <p>
             Login is used to protect data stored in your browser. Password and your data is stored encrypted in your
@@ -105,66 +109,123 @@
 
             </table>
         </form>
-
         <p ng-show="a.register == 'Y'">
             Please choose a secure password (10-50 characters) and do <b>NOT</b> forget or lose it.
             Remember your password. There is <b>NO</b> help if you forget your password.
             Use "Register" after forgotten password to create a new empty account.
         </p>
-
-
         <div style="width: 100%">
             <hr>
         </div>
+        <!-- end auth.html -->
     </script>
+
     <script type="text/ng-template" id="contacts.html">
         contacts.html
+        <!-- end contacts.html -->
     </script>
+
     <script type="text/ng-template" id="home.html">
         home.html
+        <!-- end home.html -->
     </script>
+
     <script type="text/ng-template" id="user.html">
         <p>
             It is not required but you should add some info to identify you as user in the Money Network.
             It could be name, email, phone number, foto, company name, url, GPS location or whatever.
             Real or fake values. User info are stored locally in your browser / on your device and are NOT validated by
             anyone.
-            The info is used when searching for contacts, verifying contacts and displayed in contact list.
+            The user identification is used when searching for contacts, verifying contacts and displayed in contact list.
             You decide what information that is revealed to other users in the Money Network.
             You decide when to trust other users in the Money Network.
+            Thank you for using the Money Network
         </p>
-        <p>
-            User identification
-        </p>
-        <table border="1">
-            <thead>
-            <tr>
-                <th style="text-align: center">Tag</th>
-                <th style="text-align: center">Value</th>
-                <th style="text-align: center">Privacy</th>
-                <th></th>
-            </tr>
-            </thead>
-            <tbody>
-            <tr ng-repeat="x in u.user_info">
-                <td>
-                    <input type="text" ng-model="x.tag"
-                           uib-typeahead="tag for tag in u.tags | filter:$viewValue | limitTo:8"
-                           class="form-control" style="width: 80px">
-                </td>
-                <td><input type="text" ng-model="x.value" class="form-control"></td>
-                <td>
-                    <input type="text" ng-model="x.privacy" on-key-enter="u.insert_row(x)"
-                           uib-typeahead="privacy for privacy in u.privacy_options | filter:$viewValue | limitTo:8"
-                           class="form-control" style="width: 80px">
-                </td>
-                <td>
-                    <span class="glyphicon glyphicon-remove"></span>
-                </td>
-            </tr>
-            </tbody>
-        </table>
+        <form name="user_info_form" class="css-form" novalidate>
+            <p>
+                User identification:
+                <button type="submit" disabled ng-show="user_info_form.$invalid">
+                <span title="Please correct errors" class="glyphicon glyphicon-ok"
+                      style="color: green; font-size: larger"></span>
+                </button>
+                <button type="submit" ng-click="u.update_user_info()" ng-show="user_info_form.$valid">
+                <span title="Save changes" class="glyphicon glyphicon-ok"
+                      style="color: green; font-size: larger"></span>
+                </button>
+                <button type="submit" ng-click="u.revert_user_info()">
+                <span title="Revert changes" class="glyphicon glyphicon-refresh"
+                      style="color: red; font-size: larger"></span>
+                </button>
+            </p>
+            <table border="1">
+                <thead>
+                <tr>
+                    <th style="text-align: center"
+                        title="Tag: Name, Email, Phone, Photo, Company, URL and/or GPS. Tags are shared anonymous in tag cloud">
+                        Tag
+                    </th>
+                    <th style="text-align: center" title="Tag value: Username, email address, profile picture etc.">
+                        Value
+                    </th>
+                    <th style="text-align: center"
+                        title="Privacy: Search, Public, Unverified, Verified or Hidden. See mouseover texts or click checkbox for more info">
+                        Privacy
+                        <input type="checkbox" ng-model="u.show_privacy_title"
+                               ng-change="u.show_privacy_title_changed()">
+                    </th>
+                    <th style="text-align: center" ng-show="u.show_privacy_title">Privacy details</th>
+                    <th></th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr ng-repeat="x in u.user_info">
+                    <td title="Start typing. Select tag. Name, Email, Phone etc.">
+                        <input type="text" placeholder="Start typing"
+                               ng-model="x.tag" ng-required="u.is_tag_required(x)"
+                               uib-typeahead="tag for tag in u.tags | filter:$viewValue | limitTo:8"
+                               class="user_info" style="width: 80px">
+                    </td>
+                    <td title="Enter tag value. Name, email-address, phone number etc">
+                        <input type="text"
+                               ng-model="x.value" ng-required="u.is_value_required(x)"
+                               class="user_info">
+                    </td>
+                    <td title="{{x.privacy|privacyTitle}}">
+                        <input type="text" placeholder="Start typing"
+                               ng-model="x.privacy"
+                               ng-required="u.is_privacy_required(x)" on-key-enter="u.insert_row(x)"
+                               uib-typeahead="privacy for privacy in u.privacy_options | filter:$viewValue | limitTo:8"
+                               typeahead-editable="false"
+                               class="user_info" style="width: 80px">
+                    </td>
+                    <td ng-show="u.show_privacy_title">{{x.privacy|privacyTitle}}</td>
+                    <td title="Delete row">
+                    <span ng-click="u.delete_row(x)"
+                          class="glyphicon glyphicon-remove" style="color: red; font-size: larger"></span>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+            <p>
+                Update:
+                <button type="submit" disabled ng-show="user_info_form.$invalid">
+                <span title="Please correct errors" class="glyphicon glyphicon-ok"
+                      style="color: green; font-size: larger"></span>
+                </button>
+                <button type="submit" ng-click="u.update_user_info()" ng-show="user_info_form.$valid">
+                <span title="Save changes" class="glyphicon glyphicon-ok"
+                      style="color: green; font-size: larger"></span>
+                </button>
+                <button type="submit" ng-click="u.revert_user_info()">
+                <span title="Revert changes" class="glyphicon glyphicon-refresh"
+                      style="color: red; font-size: larger"></span>
+                </button>
+            </p>
+        </form>
+
+        <!-- end user.html -->
     </script>
+    <!-- end angularJS templates -->
 
 </head>
 <body>

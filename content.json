@@ -3,16 +3,16 @@
  "description": "Complementary & alternative money demo",
  "files": {
   "css/all.css": {
-   "sha512": "4a3c9a52cab7547e3beaa255957a9173c880302b509e997db3d4c1f71e137d6d",
-   "size": 391808
+   "sha512": "f2d5cc87e5cbcf45d21a5b91058cce28aafa634ac6b60046967155dbd951225c",
+   "size": 391895
   },
   "index.html": {
-   "sha512": "f46a5ec42484f2dcbcad265cbecacb88c4d173168c76522a356f00aba84ae282",
-   "size": 10161
+   "sha512": "8621b5cef71df744a2479835adec6189ecbf1947891d6656524a869caa0c8d96",
+   "size": 13806
   },
   "js/all.js": {
-   "sha512": "d5bee13e46fdc26b1ab14025354576e1534daaba5e8efb9fc5f84c40b379b8eb",
-   "size": 2091182
+   "sha512": "0c7b2dd2b7932da1d14604465bacc9af89290b9fce0558a5ef4ef7e190cc1759",
+   "size": 2089897
   },
   "public/css/fonts/glyphicons-halflings-regular.eot": {
    "sha512": "efc910c96b9f5c58ea11a84577cf60ae995503b1ee670bb7e7d4a413b7403769",
@@ -37,15 +37,15 @@
  },
  "ignore": "(js|css|.idea|.git)/(?!all.(js|css))",
  "inner_path": "content.json",
- "modified": 1474531959.78565,
+ "modified": 1474799229.796547,
  "postmessage_nonce_security": true,
  "sign": [
-  48860784064034269840290846099073575100945457389190337038294990062911801118399,
-  68221916844356591109304962472080298489535242982153210420692040326160487348311
+  59895926058824644713297940669339169585736708732380891908836798411918797763786,
+  106044717036438896750738207272983892119425580988053428938116219920602711404316
  ],
  "signers_sign": "HKCAdoe7JxILoKnbuGqPlHvPjsCAsby4hJg9BZ4v3tsVR9vQ3vfXwOzy0FdL+Os9uc7Jlp9vLCONSIKKh/gI1Y4=",
  "signs": {
-  "1JeHa67QEvrrFpsSow82fLypw8LoRcmCXk": "HOJHVgdh6/TRJ7lyyV8h1WP+xZw9Fdk1a3haG6eYVGPF3r0CvE7mmDFChW8SExgnAnlhpAgD9ZERXTlT/CWu0Uo="
+  "1JeHa67QEvrrFpsSow82fLypw8LoRcmCXk": "GwsDEdHIll1bHPi1rz5dLFMKTPVRIwcI7gB5yNK2vSZgiBuufC4rZvyB5OfuETBZmbWIKHZ3oN9vXqZdEGSd7YE="
  },
  "signs_required": 1,
  "title": "Money Network",

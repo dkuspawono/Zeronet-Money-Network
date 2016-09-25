@@ -33,25 +33,16 @@ var MoneyNetworkHelper = (function () {
     // sessionStorage.
     var session_storage = {} ;
 
-    // localStorage javascript copy. used in ZeroFrame interface.
+    // localStorage javascript copy loaded from ZeroFrame API.
     var local_storage = {} ;
-    var local_storage_dirty = false ; // true: pending updates to ZeroFrame localStorage. Please call
-
-    function is_local_storage_dirty() {
-        return local_storage_dirty ;
-    }
-    function local_storage_not_dirty() {
-        local_storage_dirty = false ;
-    }
-    // return local_storage. used in wrapperSetLocalStorage. copy javascript object to localStorage
-    function get_local_storage() {
-        return local_storage ;
-    }
-    // load local storage javascript object from localStorage. ZeroFrame implementation. Callback used in wrapperGetLocalStorage
-    function set_local_storage (res) {
+    ZeroFrame.cmd("wrapperGetLocalStorage", [], function (res) {
         if (!res) res = {} ;
         local_storage = res ;
+    }) ;
+    function save_local_storage() {
+        ZeroFrame.cmd("wrapperSetLocalStorage", local_storage) ;
     }
+
 
     // values in sessionStorage:
     // - data are discarded when user closes browser tab
@@ -195,7 +186,7 @@ var MoneyNetworkHelper = (function () {
             value = storage_flag + value;
             // save
             if (session) session_storage[key] = value; // sessionStorage.setItem(key, value);
-            else {local_storage[key] = value ; local_storage_dirty = true }; // localStorage.setItem(key, value);
+            else {local_storage[key] = value ; save_local_storage }; // localStorage.setItem(key, value);
         }, null);
     } // lzma_compress1
     function lzma_compress0(key, value, session, password, length) {
@@ -221,7 +212,7 @@ var MoneyNetworkHelper = (function () {
                 value = storage_flag + value;
                 // save
                 if (session) session_storage[key] = value; // sessionStorage.setItem(key, value);
-                else { local_storage[key] = value ; local_storage_dirty = true }; // localStorage.setItem(key, value);
+                else { local_storage[key] = value ; save_local_storage() }; // localStorage.setItem(key, value);
                 length = value.length - 1;
             }
             ;
@@ -390,7 +381,7 @@ var MoneyNetworkHelper = (function () {
         // save
         // if (key.match(/oauth/)) console.log('setItem. key = ' + key + ', value = ' + value) ;
         if (rule.session) session_storage[key] = value; // sessionStorage.setItem(key, value);
-        else {local_storage[key] = value ; local_storage_dirty = true}; // localStorage.setItem(key, value);
+        else {local_storage[key] = value ; save_local_storage()}; // localStorage.setItem(key, value);
         // optimize compression for saved value
 
         // todo: disabled until I find a method to convert byte array returned from LZMA.compress into an valid utf-16 string
@@ -415,7 +406,7 @@ var MoneyNetworkHelper = (function () {
         }
         // remove
         if (rule.session) delete session_storage[key]; // sessionStorage.removeItem(key);
-        else {delete local_storage[key]; local_storage_dirty=true}; // localStorage.removeItem(key);
+        else {delete local_storage[key]; save_local_storage()}; // localStorage.removeItem(key);
     } // removeItem
 
     function getUserId() {
@@ -536,48 +527,17 @@ var MoneyNetworkHelper = (function () {
     } // client_logout
 
 
-    // temporary buffer flash messages (used doing routeProvider redirects)
-    var flash_type = null;
-    var flash_message = null;
-
-    function setFlashMessage(type, message) {
-        flash_type = type;
-        flash_message = message;
-    }
-
-    function getFlashMessage() {
-        return flash_message;
-    }
-
-    function getFlashType() {
-        return flash_type;
-    }
-
-    function clearFlashMessage() {
-        flash_type = null;
-        flash_message = null;
-    }
-
-
     // export helpers
     console.log('MoneyNetworkHelper object initialised');
     return {
         // local storage helpers
-        is_local_storage_dirty: is_local_storage_dirty,
-        local_storage_not_dirty: local_storage_not_dirty,
-        get_local_storage: get_local_storage,
-        set_local_storage: set_local_storage,
         getItem: getItem,
         setItem: setItem,
         removeItem: removeItem,
         getUserId: getUserId,
         client_login: client_login,
         client_logout: client_logout,
-        generate_random_password: generate_random_password,
-        setFlashMessage: setFlashMessage,
-        getFlashType: getFlashType,
-        getFlashMessage: getFlashMessage,
-        clearFlashMessage: clearFlashMessage
+        generate_random_password: generate_random_password
     };
 })();
 // MoneyNetworkHelper end
@@ -591,8 +551,7 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
         // resolve: check if user is logged. check is used in multiple routes
         var check_auth_resolve = ['$location', function ($location) {
             if (!MoneyNetworkHelper.getUserId()) {
-                // not logged in
-                MoneyNetworkHelper.setFlashMessage('info', 'Not allowed. Please log in');
+                ZeroFrame.cmd("wrapperNotification", ['info', 'Not allowed. Please log in', 3000]);
                 $location.path('/auth');
                 $location.replace();
             }
@@ -618,8 +577,8 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
             .when('/logout', {
                 resolve: {
                     logout: ['$location', function ($location) {
-                        if (MoneyNetworkHelper.getUserId()) MoneyNetworkHelper.setFlashMessage('done', 'Log out OK') ;
-                        else MoneyNetworkHelper.setFlashMessage('info', 'Already logged out') ;
+                        if (MoneyNetworkHelper.getUserId()) ZeroFrame.cmd("wrapperNotification", ['done', 'Log out OK', 3000]) ;
+                        else ZeroFrame.cmd("wrapperNotification", ['info', 'Already logged out', 3000]);
                         MoneyNetworkHelper.client_logout();
                         $location.path('/auth');
                         $location.replace();
@@ -640,79 +599,11 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
     }])
 
 
-    // wrap ZeroNet ZeroFrame API in an angularJS service - https://zeronet.readthedocs.io/en/latest/site_development/zeroframe_api_reference/
-    .factory('ZeroFrameService', [function () {
 
-        var self = this;
-        var service = 'ZeroFrameService';
-        console.log(service + ' loaded');
-
-        // copy/paste from ZeroChat.coffee example - https://bit.no.com:43110/Blog.ZeroNetwork.bit/?Post:43:ZeroNet+site+development+tutorial+1
-        var bind = function (fn, me) {
-                return function () {
-                    return fn.apply(me, arguments);
-                };
-            },
-            extend = function (child, parent) {
-                for (var key in parent) {
-                    if (hasProp.call(parent, key)) child[key] = parent[key];
-                }
-                function ctor() {
-                    this.constructor = child;
-                }
-
-                ctor.prototype = parent.prototype;
-                child.prototype = new ctor();
-                child.__super__ = parent.prototype;
-                return child;
-            },
-            hasProp = {}.hasOwnProperty;
-        var superClass = ZeroFrame;
-
-        extend(ZeroFrameService, superClass);
-
-        function ZeroFrameService() {
-            this.onOpenWebsocket = bind(this.onOpenWebsocket, this);
-            ZeroFrameService.__super__.constructor.apply(this, arguments);
-        }
-
-        ZeroFrameService.prototype.init = function () {
-            // Make ZeroNet localStorage data available for MoneyNetworkHelper (copy?)
-            this.cmd("wrapperGetLocalStorage", [], MoneyNetworkHelper.set_local_storage) ;
-        };
-
-        ZeroFrameService.prototype.addLine = function (line) {
-            console.log(line);
-        };
-
-        // save localStorage (ZeroFrame implementation). Should be called after every change in localStorage
-        ZeroFrameService.prototype.write_local_storage = function (e) {
-            if (!MoneyNetworkHelper.is_local_storage_dirty()) return ;
-            this.cmd("wrapperSetLocalStorage", MoneyNetworkHelper.get_local_storage()) ;
-            MoneyNetworkHelper.local_storage_not_dirty() ;
-        };
-
-        // flash message / notification via ZeroFrame API
-        ZeroFrameService.prototype.notification = function (type, message, timeout) {
-            if (!timeout) timeout=3000 ;
-            this.cmd("wrapperNotification", [type, message, timeout]) ;
-        };
-
-        return new ZeroFrameService();
-    }])
-
-
-    .factory('MoneyNetworkService', ['ZeroFrameService', function(zeroFrameService) {
+    .factory('MoneyNetworkService', [function() {
         var self = this;
         var service = 'MoneyNetworkService' ;
         console.log(service + ' loaded') ;
-
-        function show_old_flash () {
-            if (MoneyNetworkHelper.getFlashMessage()) {
-                zeroFrameService.notification(MoneyNetworkHelper.getFlashType(), MoneyNetworkHelper.getFlashMessage());
-                MoneyNetworkHelper.clearFlashMessage() ;
-            };
-        } // show_old_flash
 
         // startup tag cloud. Tags should be created by users and shared between contacts.
         // Used in typeahead autocomplete functionality http://angular-ui.github.io/bootstrap/#/typeahead
@@ -728,29 +619,31 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
             return user_info ;
         }
 
-        // privacy option for user info
-        // Search - search word is stored on server together with a random public key.
-        //          server will match search words and return matches to clients
-        // Public - info send to other contact after search match. Info is show in contact suggestions (public profile)
-        // Unverified - info send to other unverified contact after adding contact to contact list (show more contact info)
-        // Verified - send to verified contact after verification through a secure canal (show more contact info)
-        // Hidden - private, hidden information. Never send to server or other users.
+        // privacy options for user info - descriptions in privacyTitleFilter
         var privacy_options = ['Search', 'Public', 'Unverified', 'Verified', 'Hidden'] ;
         function get_privacy_options () {
             return privacy_options ;
         }
+        var show_privacy_title = false ;
+        function get_show_privacy_title() {
+            return show_privacy_title ;
+        }
+        function set_show_privacy_title (show) {
+            show_privacy_title = show ;
+        }
 
         return {
-            show_old_flash: show_old_flash,
             get_tags: get_tags,
             get_privacy_options: get_privacy_options,
+            get_show_privacy_title: get_show_privacy_title,
+            set_show_privacy_title: set_show_privacy_title,
             get_user_info: get_user_info
         };
         // end MoneyNetworkService
     }])
 
 
-    .controller('NavCtrl', ['ZeroFrameService', function (zeroFrameService) {
+    .controller('NavCtrl', [function () {
         var self = this;
         var controller = 'NavCtrl';
         console.log(controller + ' loaded');
@@ -759,12 +652,10 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
     }])
 
 
-    .controller('AuthCtrl', ['$location', 'ZeroFrameService', 'MoneyNetworkService', function ($location, zeroFrameService, moneyNetworkService) {
+    .controller('AuthCtrl', ['$location', 'MoneyNetworkService', function ($location, moneyNetworkService) {
         var self = this;
         var controller = 'AuthCtrl';
         console.log(controller + ' loaded');
-
-        moneyNetworkService.show_old_flash() ;
 
         self.is_logged_in = function () {
             return MoneyNetworkHelper.getUserId();
@@ -793,11 +684,11 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
             if (userid == 0) {
                 var error = 'Invalid password' ;
                 self.login_or_register_error = error;
-                zeroFrameService.notification('error', error);
+                ZeroFrame.cmd("wrapperNotification", ['error', error, 3000]);
             }
             else {
                 // clear login form
-                zeroFrameService.notification('done', 'Log in OK');
+                ZeroFrame.cmd("wrapperNotification", ['done', 'Log in OK', 3000]);
                 self.device_password = '';
                 self.confirm_device_password = '';
                 self.register = 'N';
@@ -817,17 +708,54 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
         self.user_info = moneyNetworkService.get_user_info() ; // array with tags and values
         self.tags = moneyNetworkService.get_tags() ; // typeahead autocomplete functionality
         self.privacy_options = moneyNetworkService.get_privacy_options() ; // select options with privacy settings for user info
+        self.show_privacy_title = moneyNetworkService.get_show_privacy_title() ; // checkbox - display column with privacy descriptions?
 
-        // add empty rows to user info table.
+        // add empty rows to user info table. triggered in privacy field. enter and tab (only for last row)
         self.insert_row = function(row) {
             var pgm = controller + '.insert_row: ' ;
             var index ;
             for (var i=0 ; i<self.user_info.length ; i++) if (self.user_info[i].$$hashKey == row.$$hashKey) index = i ;
             index = index + 1 ;
-            console.log(pgm + 'row = ' + JSON.stringify(row)) ;
-            console.log(pgm + 'adding new user_info row at index ' + index) ;
             self.user_info.splice(index, 0, { tag: '', value: '', privacy: ''});
             $scope.$apply();
+        };
+        self.delete_row = function(row) {
+            var pgm = controller + '.delete_row: ' ;
+            var index ;
+            for (var i=0 ; i<self.user_info.length ; i++) if (self.user_info[i].$$hashKey == row.$$hashKey) index = i ;
+            console.log(pgm + 'row = ' + JSON.stringify(row)) ;
+            self.user_info.splice(index, 1);
+            if (self.user_info.length == 0) self.user_info.splice(index, 0, { tag: '', value: '', privacy: ''});
+        };
+
+        // user_info validations
+        self.is_tag_required = function(row) {
+            if (row.value) return true ;
+            if (row.privary) return true ;
+            return false ;
+        };
+        self.is_value_required = function(row) {
+            if (!row.tag) return false ;
+            if (row.tag == 'GPS') return false ;
+            return true ;
+        };
+        self.is_privacy_required = function(row) {
+            if (row.tag) return true ;
+            if (row.value) return true ;
+            return false ;
+        };
+
+        self.show_privacy_title_changed = function () {
+            moneyNetworkService.set_show_privacy_title(self.show_privacy_title)
+        };
+
+        self.update_user_info = function () {
+            var pgm = controller + '.update_user_info: ' ;
+            console.log(pgm) ;
+        };
+        self.revert_user_info = function () {
+            var pgm = controller + '.revert_user_info: ' ;
+            console.log(pgm) ;
         };
 
     }])
@@ -854,6 +782,28 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
                 })
             }
         };
+    }])
+
+
+    .filter('privacyTitle', [function () {
+        // title for user info privacy selection. mouse over help
+        // Search - search word is stored on server together with a random public key.
+        //          server will match search words and return matches to clients
+        // Public - info send to other contact after search match. Info is show in contact suggestions (public profile)
+        // Unverified - info send to other unverified contact after adding contact to contact list (show more contact info)
+        // Verified - send to verified contact after verification through a secure canal (show more contact info)
+        // Hidden - private, hidden information. Never send to server or other users.
+        var privacy_titles = {
+            Search: "Search values are stored in a database and are used when searching for contacts. Shared unencrypted with all other ZeroNet clients. Regular expressions with a low number of matches are supported",
+            Public: "Info is sent encrypted to other contact after search match. Public Info is shown in contact search and contact suggestions. Your public profile",
+            Unverified: "Info is sent encrypted to other unverified contact after adding contact to contact list. Additional info about you to other contact",
+            Verified: "Info is sent encrypted to verified contact after contact verification through a secure canal. Your private profile",
+            Hidden: "Private, hidden information. Never send to other users"
+        };
+        return function (privacy) {
+            return privacy_titles[privacy] || 'Start typing. Select privacy level';
+        } ;
+        // end privacyTitle filter
     }])
 
 ;
