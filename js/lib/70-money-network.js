@@ -26,21 +26,42 @@ if (!Array.prototype.indexOf) {
 // helper functions
 var MoneyNetworkHelper = (function () {
 
+    var module = 'MoneyNetworkHelper' ;
+
     // local or session storage functions ==>
 
-    // sessionStorage and localStorage implementation. not working in ZeroNet. Error: The operation is insecure
+    // sessionStorage and localStorage implementation. direct calls are not working in ZeroNet. Error: The operation is insecure
+    // sessionStorage is implemented as a JS object
+    // localStorage is implemented as a JS object stored and updates sync asynchronously in ZeroFrame API
 
     // sessionStorage.
     var session_storage = {} ;
 
-    // localStorage javascript copy loaded from ZeroFrame API.
+    // localStorage javascript copy loaded from ZeroFrame API. Initialized asyn. Takes a few seconds before local_storage JS object is initialized
     var local_storage = {} ;
     ZeroFrame.cmd("wrapperGetLocalStorage", [], function (res) {
-        if (!res) res = {} ;
-        local_storage = res ;
+        var pgm = module + '.wrapperGetLocalStorage callback (1): ';
+        // console.log(pgm + 'typeof res =' + typeof res) ;
+        // console.log(pgm + 'res = ' + JSON.stringify(res)) ;
+        if (!res) res = [{}] ;
+        res = res[0];
+        // moving values received from ZeroFrame API to JS copy of local storage
+        // console.log(pgm + 'old local_storage = ' + JSON.stringify(local_storage)) ;
+        // console.log(pgm + 'moving values received from ZeroFrame API to JS local_storage copy');
+        var key ;
+        for (key in local_storage) if (!res.hasOwnProperty(key)) delete local_storage[key] ;
+        for (key in res) local_storage[key] = res[key] ;
+        // console.log(pgm + 'local_storage = ' + JSON.stringify(local_storage));
     }) ;
+
+    // write JS copy of local storage back to ZeroFrame API
     function save_local_storage() {
-        ZeroFrame.cmd("wrapperSetLocalStorage", local_storage) ;
+        var pgm = module + '.save_local_storage: ' ;
+        // console.log(pgm + 'saving local_storage to ZeroFrame API = ' + JSON.stringify(local_storage));
+        ZeroFrame.cmd("wrapperSetLocalStorage", [local_storage], function () {
+            var pgm = module + '.save_local_storage callback (3): ';
+            // console.log(pgm + 'done');
+        }) ;
     }
 
 
@@ -60,22 +81,15 @@ var MoneyNetworkHelper = (function () {
     // - default values are <userid> prefix, no encryption and no compression (write warning in console.log)
 
     var storage_rules = {
-        currency: {session: false, userid: true, compress: false, encrypt: false}, // currency code (ISO 4217)
-        did: {session: false, userid: true, compress: false, encrypt: false}, // new unique device id
-        friends: {session: false, userid: true, compress: true, encrypt: true}, // array with downloaded friends info from login
-        gifts: {session: false, userid: true, compress: true, encrypt: true}, // "array" with gifts - encrypted - pseudo rule used for gift_1, gift_2 etc
+        // basic authorization - see client_login
         key: {session: false, userid: true, compress: true, encrypt: true}, // random password - used for localStorage encryption
-        noti: {session: false, userid: true, compress: true, encrypt: true}, // "array" with notifications (message in UI) - only some type of notifications are saved in localStorage
         password: {session: true, userid: false, compress: false, encrypt: false}, // session password in clear text
         passwords: {session: false, userid: false, compress: false, encrypt: false}, // array with hashed passwords. size = number of accounts
-        oauth: {session: false, userid: true, compress: true, encrypt: true}, // login provider oauth authorization
         prvkey: {session: false, userid: true, compress: true, encrypt: true}, // for encrypted user to user communication
         pubkey: {session: false, userid: true, compress: true, encrypt: false}, // for encrypted user to user communication
-        secret: {session: false, userid: true, compress: true, encrypt: false}, // client secret - used as secret element in device.sha256 - 10 digits
-        seq: {session: false, userid: true, compress: true, encrypt: false}, // sequence - for example used in verify_gifts request and response
-        sid: {session: true, userid: false, compress: false, encrypt: false}, // unique session id - changes for every new device login
         userid: {session: true, userid: false, compress: false, encrypt: false}, // session userid (1, 2, etc) in clear text
-        users: {session: false, userid: true, compress: true, encrypt: true} // array with users used in gifts and comments
+        // user data
+        user_info: {session: false, userid: true, compress: true, encrypt: true} // array with user_info. See user sub page / userCtrl
     };
 
     // first character in stored value is an encryption/compression storage flag
@@ -186,7 +200,7 @@ var MoneyNetworkHelper = (function () {
             value = storage_flag + value;
             // save
             if (session) session_storage[key] = value; // sessionStorage.setItem(key, value);
-            else {local_storage[key] = value ; save_local_storage }; // localStorage.setItem(key, value);
+            else local_storage[key] = value ; // localStorage.setItem(key, value);
         }, null);
     } // lzma_compress1
     function lzma_compress0(key, value, session, password, length) {
@@ -212,7 +226,7 @@ var MoneyNetworkHelper = (function () {
                 value = storage_flag + value;
                 // save
                 if (session) session_storage[key] = value; // sessionStorage.setItem(key, value);
-                else { local_storage[key] = value ; save_local_storage() }; // localStorage.setItem(key, value);
+                else local_storage[key] = value ; // localStorage.setItem(key, value);
                 length = value.length - 1;
             }
             ;
@@ -274,6 +288,7 @@ var MoneyNetworkHelper = (function () {
         }
         // read stored value
         var value = rule.session ? session_storage[key] : local_storage[key]; // localStorage.getItem(key);
+        // if (pseudo_key == 'user_info') console.log(pgm + 'debug: local_storage = ' + JSON.stringify(local_storage) + ', value = ' + value) ;
         if ((typeof value == 'undefined') || (value == null) || (value == '')) return null; // key not found
 
         // get storage flag - how was data stored - first character in value
@@ -318,7 +333,7 @@ var MoneyNetworkHelper = (function () {
 
     function setItem(key, value) {
         var pgm = 'MoneyNetworkHelper.setItem: ';
-        var save_value = value; // for optional lzma_compress0
+        // console.log(pgm + 'key = ' + key + ', value = ' + value) ;
         var pseudo_key = key.match(/^gift_[0-9]+$/) ? 'gifts' : key; // use gifts rule for gift_1, gift_1 etc
         var rule = get_local_storage_rule(pseudo_key);
         if (rule.encrypt) var password_type = (key == 'key' ? 'password' : 'key'); // key is as only variable encrypted with human password
@@ -377,11 +392,12 @@ var MoneyNetworkHelper = (function () {
             console.log(pgm + 'Error. key ' + key + ' was not saved. Could not found storage flag for storage options = ' + JSON.stringify(storage_options));
             return;
         }
+        // if (pseudo_key == 'user_info') console.log(pgm + 'debug: key = ' + key + ', value = ' + value) ;
         value = storage_flag + value;
         // save
         // if (key.match(/oauth/)) console.log('setItem. key = ' + key + ', value = ' + value) ;
         if (rule.session) session_storage[key] = value; // sessionStorage.setItem(key, value);
-        else {local_storage[key] = value ; save_local_storage()}; // localStorage.setItem(key, value);
+        else local_storage[key] = value; // localStorage.setItem(key, value);
         // optimize compression for saved value
 
         // todo: disabled until I find a method to convert byte array returned from LZMA.compress into an valid utf-16 string
@@ -406,7 +422,7 @@ var MoneyNetworkHelper = (function () {
         }
         // remove
         if (rule.session) delete session_storage[key]; // sessionStorage.removeItem(key);
-        else {delete local_storage[key]; save_local_storage()}; // localStorage.removeItem(key);
+        else delete local_storage[key]; // localStorage.removeItem(key);
     } // removeItem
 
     function getUserId() {
@@ -471,16 +487,21 @@ var MoneyNetworkHelper = (function () {
     // use create_new_account = true to force create a new user account
     // support for more than one user account
     function client_login(password, create_new_account) {
+        var pgm = module + '.client_login: ' ;
         var password_sha256, passwords_s, passwords_a, i, userid, did, crypt, pubkey, prvkey, prvkey_aes, giftid_key;
         password_sha256 = sha256(password);
         // passwords: array with hashed passwords. size = number of accounts
         passwords_s = getItem('passwords');
+        // console.log(pgm + 'passwords_s = ' + passwords_s) ;
         if ((passwords_s == null) || (passwords_s == '')) passwords_a = [];
         else passwords_a = JSON.parse(passwords_s);
+        // console.log(pgm + 'password_sha256 = ' + password_sha256) ;
         // check old accounts
         for (i = 0; i < passwords_a.length; i++) {
+            // console.log(pgm + 'passwords_a[' + i + '] = ' + passwords_a[i]) ;
             if (password_sha256 == passwords_a[i]) {
-                // log in ok - account existsgetItem
+                // log in ok - account exists
+                // console.log(pgm + 'login ok') ;
                 userid = i + 1;
                 // save login
                 setItem('userid', userid);
@@ -489,8 +510,9 @@ var MoneyNetworkHelper = (function () {
             }
         }
         // password was not found
-        if ((passwords_a.length == 0) || create_new_account) {
+        if (create_new_account) {
             // create new account
+            console.log(pgm + 'create new account');
             userid = passwords_a.length + 1; // sequence = number of user accounts in local storage
             // setup new account
             passwords_a.push(password_sha256);
@@ -513,9 +535,12 @@ var MoneyNetworkHelper = (function () {
             setItem('prvkey', prvkey); // private key - only used on this device - never sent to server or other clients
             setItem('pubkey', pubkey); // public key - sent to server and other clients
             setItem('passwords', passwords_s); // array with sha256 hashed passwords. length = number of accounts
+            // send local storage updates to ZeroFrame
+            save_local_storage();
             return userid;
         }
         // invalid password (create_new_account=false)
+        // console.log(pgm + 'invalid password');
         return 0;
     } // client_login
 
@@ -534,6 +559,7 @@ var MoneyNetworkHelper = (function () {
         getItem: getItem,
         setItem: setItem,
         removeItem: removeItem,
+        save_local_storage: save_local_storage,
         getUserId: getUserId,
         client_login: client_login,
         client_logout: client_logout,
@@ -599,7 +625,6 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
     }])
 
 
-
     .factory('MoneyNetworkService', [function() {
         var self = this;
         var service = 'MoneyNetworkService' ;
@@ -614,9 +639,24 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
 
         // user info. Array with tag, value and privacy.
         // saved in localStorage. Shared with contacts depending on privacy choice
-        var user_info = [ { tag: 'Name', value: 'John Doe', privacy: 'Search'}, { tag: '', value: '', privacy: ''}] ;
+        var user_info = [] ;
+        function load_user_info () {
+            var pgm = service + '.load_user_info: ';
+            var user_info_str, new_user_info ;
+            var user_info_str = MoneyNetworkHelper.getItem('user_info') ;
+            // console.log(pgm + 'user_info_str = ' + user_info_str) ;
+            if (user_info_str) new_user_info = JSON.parse(user_info_str) ;
+            else new_user_info = [{ tag: '', value: '', privacy: ''}] ;
+            user_info.splice(0,user_info.length) ;
+            for (var i=0 ; i<new_user_info.length ; i++) user_info.push(new_user_info[i]) ;
+        }
         function get_user_info () {
             return user_info ;
+        }
+        function save_user_info () {
+            var pgm = service + '.save_user_info: ';
+            MoneyNetworkHelper.setItem('user_info', JSON.stringify(user_info)) ;
+            MoneyNetworkHelper.save_local_storage() ;
         }
 
         // privacy options for user info - descriptions in privacyTitleFilter
@@ -637,7 +677,9 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
             get_privacy_options: get_privacy_options,
             get_show_privacy_title: get_show_privacy_title,
             set_show_privacy_title: set_show_privacy_title,
-            get_user_info: get_user_info
+            load_user_info: load_user_info,
+            get_user_info: get_user_info,
+            save_user_info: save_user_info
         };
         // end MoneyNetworkService
     }])
@@ -692,6 +734,7 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
                 self.device_password = '';
                 self.confirm_device_password = '';
                 self.register = 'N';
+                moneyNetworkService.load_user_info() ;
                 $location.path('/home');
                 $location.replace();
             }
@@ -751,11 +794,14 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
 
         self.update_user_info = function () {
             var pgm = controller + '.update_user_info: ' ;
-            console.log(pgm) ;
+            // console.log(pgm + 'calling moneyNetworkService.save_user_info()');
+            moneyNetworkService.save_user_info() ;
+            // console.log(pgm) ;
         };
         self.revert_user_info = function () {
             var pgm = controller + '.revert_user_info: ' ;
-            console.log(pgm) ;
+            moneyNetworkService.load_user_info() ;
+            // console.log(pgm) ;
         };
 
     }])
