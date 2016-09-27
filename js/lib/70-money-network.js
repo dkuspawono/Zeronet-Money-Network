@@ -64,6 +64,39 @@ var MoneyNetworkHelper = (function () {
         }) ;
     }
 
+    // auto login to ZeroNet with an anonymous account
+    // copy/paste from "Nanasi text board" - http://127.0.0.1:43110/16KzwuSAjFnivNimSHuRdPrYd1pNPhuHqN/
+    // bitcoin keypair
+    var nanasi = bitcoin.ECPair.fromWIF("5JTfUUK1Ttep7zECM4uMxjidA9YruKMrGuUhfzNnvW8X7dqg5Ts"); // bitcoin keypair
+    console.log(module + ': nanasi = ' + JSON.stringify(nanasi)) ;
+    // get ZeroNet site_info, check user and generate new anonymous account if not logged in
+    var site_info ;
+    ZeroFrame.cmd("siteInfo", {}, function(res) {
+        var pgm = module + ' siteInfo callback: ' ;
+        // console.log(pgm + 'res = ' + JSON.stringify(res));
+        site_info = res ;
+        if (!site_info.cert_user_id) {
+            // not logged in. Generate new anonymous account and login
+            // create nanasi cert
+            var cert;
+            cert = bitcoin.message.sign(nanasi, (site_info.auth_address + "#web/") + site_info.auth_address.slice(0, 13)).toString("base64");
+            // console.log(pgm + 'cert = ' + JSON.stringify(cert)) ;
+            // add cert - no certSelect dialog - continue with just created nanasi cert
+            ZeroFrame.cmd("certAdd", ["nanasi", "web", site_info.auth_address.slice(0, 13), cert], function (res) {
+                var pgm = module + " certAdd callback: " ;
+                // console.log(pgm + 'res = ' + JSON.stringify(res)) ;
+                if (res.error && res.error.startsWith("You already")) {
+                    // ZeroFrame.cmd("certSelect", [["zeroid.bit", "nanasi"]]);
+                    // No certSelect - continue with newly created nanasi cert
+                } else if (res.error) {
+                    ZeroFrame.cmd("wrapperNotification", ["error", "Failed to create account: " + res.error]);
+                } else {
+                    // ZeroFrame.cmd("certSelect", [["zeroid.bit", "nanasi"]]);
+                    // No certSelect - continue with newly created nanasi cert
+                }
+            });
+        }
+    });
 
     // values in sessionStorage:
     // - data are discarded when user closes browser tab
