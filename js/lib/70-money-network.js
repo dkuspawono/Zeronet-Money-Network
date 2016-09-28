@@ -62,32 +62,36 @@ var MoneyNetworkHelper = (function () {
             var pgm = module + '.save_local_storage callback (3): ';
             // console.log(pgm + 'done');
         }) ;
+    } // save_local_storage
+
+    // post user_info (search words) to ZeroNet
+    function post_user_info () {
         var user_info = getItem('user_info');
-        if (!user_info) return ;
-        user_info = JSON.parse(user_info) ;
+        if (!user_info) user_info = [] ;
+        else user_info = JSON.parse(user_info) ;
+        var pubkey = getItem('pubkey') ;
         // console.log(pgm + 'user_info = ' + JSON.stringify(user_info)) ;
         // console.log(pgm + 'create/update json with search words') ;
         var inner_path = "data/users/" + site_info.auth_address + "/data.json";
 
-        // update json table with search words (public key, search word, timestamp)
+        // update json table with public key and search words
         ZeroFrame.cmd("fileGet", {inner_path: inner_path, required: false}, function (data) {
             var pgm = module + '.save_local_storage fileGet callback: ' ;
             // console.log(pgm + 'data = ' + JSON.stringify(data));
-            var json_raw, k, sha;
+            var json_raw, row;
             if (data) data = JSON.parse(data);
             else data = {};
+            data.sha256 = CryptoJS.SHA256(pubkey).toString() ;
+            data.pubkey = pubkey ;
             data.search = [] ;
             for (var i=0 ; i<user_info.length ; i++) {
                 if (user_info[i].privacy != 'Search') continue ;
-                k = {
-                    pubkey: user_info[i].pubkey,
-                    search: user_info[i].value,
+                row = {
+                    tag: user_info[i].tag,
+                    value: user_info[i].value,
                     time: new Date().getTime()
                 };
-                sha = new jsSHA("SHA-256", "TEXT");
-                sha.update(JSON.stringify([site_info.auth_address, k.pubkey, k.search, k.time]));
-                k.hash = sha.getHash("B64");
-                data.search.push(k);
+                data.search.push(row);
             } // for i
             // console.log(pgm + 'data = ' + JSON.stringify(data)) ;
             json_raw = unescape(encodeURIComponent(JSON.stringify(data, null, "\t")));
@@ -103,10 +107,7 @@ var MoneyNetworkHelper = (function () {
                 } else ZeroFrame.cmd("wrapperNotification", ["error", "Failed to post: " + res.error]);
             }); // fileWrite
         }); // fileGet
-
-
-
-    }
+    } // post_user_info
 
     // test if siteInfo already is available in ZeroFrame
     console.log(module + ': ZeroFrame.site_info = ' + JSON.stringify(ZeroFrame.site_info)) ;
@@ -639,13 +640,13 @@ var MoneyNetworkHelper = (function () {
 
 
     // export helpers
-    console.log('MoneyNetworkHelper object initialised');
     return {
         // local storage helpers
         getItem: getItem,
         setItem: setItem,
         removeItem: removeItem,
         save_local_storage: save_local_storage,
+        post_user_info: post_user_info,
         getUserId: getUserId,
         client_login: client_login,
         client_logout: client_logout,
@@ -753,6 +754,7 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
             }
             MoneyNetworkHelper.setItem('user_info', JSON.stringify(user_info)) ;
             MoneyNetworkHelper.save_local_storage() ;
+            MoneyNetworkHelper.post_user_info() ;
         }
 
         // privacy options for user info - descriptions in privacyTitleFilter

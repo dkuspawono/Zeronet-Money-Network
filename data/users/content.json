@@ -3,15 +3,13 @@
  "files": {},
  "ignore": ".*",
  "inner_path": "data/users/content.json",
- "modified": 1475063994.547365,
+ "modified": 1475069029.38116,
  "signs": {
-  "1JeHa67QEvrrFpsSow82fLypw8LoRcmCXk": "G+deWARwC7mIlvydCCUROUr4/FPdUGDIjUiOx8dROP3jMBr2xAqnjBlJINj7j0MihlacPpezJK/12PTnyHwo93A="
+  "1JeHa67QEvrrFpsSow82fLypw8LoRcmCXk": "G5PKzC7D/eub/FZPOOMNT1V+A7zdVCzM25lGpn0SAySCfPTZUapiWy3C8VKJUiWPQYu1IgiOAFQSrDQ09m45G2c="
  },
  "user_contents": {
   "cert_signers": {
-   "moneynetwork": [ "1D2f1XV3zEDDvhDjcD9ugehNJEzv68Dhmf" ],
-   "nanasi": [ "16PmAP6z2MCJX9jNjvMrteMfnqX4KeDRNT" ],
-   "zeroid.bit": [ "1iD5ZQJMNXu43w1qLB8sfdHVKppVMduGz" ]
+   "moneynetwork": [ "1D2f1XV3zEDDvhDjcD9ugehNJEzv68Dhmf" ]
   },
   "permission_rules": {
    ".*": {
