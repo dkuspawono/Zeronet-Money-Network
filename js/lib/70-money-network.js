@@ -65,19 +65,18 @@ var MoneyNetworkHelper = (function () {
         var user_info = getItem('user_info');
         if (!user_info) return ;
         user_info = JSON.parse(user_info) ;
-        console.log(pgm + 'user_info = ' + JSON.stringify(user_info)) ;
-        console.log(pgm + 'create/update json with search words') ;
+        // console.log(pgm + 'user_info = ' + JSON.stringify(user_info)) ;
+        // console.log(pgm + 'create/update json with search words') ;
         var inner_path = "data/users/" + site_info.auth_address + "/data.json";
 
         // update json table with search words (public key, search word, timestamp)
         ZeroFrame.cmd("fileGet", {inner_path: inner_path, required: false}, function (data) {
             var pgm = module + '.save_local_storage fileGet callback: ' ;
-            console.log(pgm + 'data = ' + JSON.stringify(data));
+            // console.log(pgm + 'data = ' + JSON.stringify(data));
             var json_raw, k, sha;
             if (data) data = JSON.parse(data);
             else data = {};
             data.search = [] ;
-            console.log()
             for (var i=0 ; i<user_info.length ; i++) {
                 if (user_info[i].privacy != 'Search') continue ;
                 k = {
@@ -90,17 +89,17 @@ var MoneyNetworkHelper = (function () {
                 k.hash = sha.getHash("B64");
                 data.search.push(k);
             } // for i
-            console.log(pgm + 'data = ' + JSON.stringify(data)) ;
+            // console.log(pgm + 'data = ' + JSON.stringify(data)) ;
             json_raw = unescape(encodeURIComponent(JSON.stringify(data, null, "\t")));
             ZeroFrame.cmd("fileWrite", [inner_path, btoa(json_raw)], function (res) {
                 var pgm = module + '.save_local_storage fileWrite callback: ' ;
-                console.log(pgm + 'res = ' + JSON.stringify(res)) ;
+                // console.log(pgm + 'res = ' + JSON.stringify(res)) ;
                 if (res === "ok") {
                     ZeroFrame.cmd("sitePublish", {inner_path: inner_path}, function (res) {
                         var pgm = module + '.save_local_storage sitePublish callback: ' ;
-                        console.log(pgm + 'res = ' + JSON.stringify(res)) ;
+                        // console.log(pgm + 'res = ' + JSON.stringify(res)) ;
                         if (res != "ok") ZeroFrame.cmd("wrapperNotification", ["error", "Failed to post: " + res.error]);
-                    });
+                    }); // sitePublish
                 } else ZeroFrame.cmd("wrapperNotification", ["error", "Failed to post: " + res.error]);
             }); // fileWrite
         }); // fileGet
@@ -114,35 +113,38 @@ var MoneyNetworkHelper = (function () {
 
     // auto login to ZeroNet with an anonymous money network account
     // copy/paste from "Nanasi text board" - http://127.0.0.1:43110/16KzwuSAjFnivNimSHuRdPrYd1pNPhuHqN/
-    var bitcoin_keypair = bitcoin.ECPair.fromWIF("5JTfUUK1Ttep7zECM4uMxjidA9YruKMrGuUhfzNnvW8X7dqg5Ts"); // bitcoin keypair
-    // console.log(module + ': bitcoin_keypair = ' + JSON.stringify(bitcoin_keypair)) ;
-    // get ZeroNet site_info, check user and generate new anonymous money network account if not logged in
+    // short documention can be in posts on "Nanasi text board"
+    // http://127.0.0.1:43110/Talk.ZeroNetwork.bit/?Topic:6_13hcYDp4XW3GQo4LMtmPf8qUZLZcxFSmVw
+    var bitcoin_public_key = "1D2f1XV3zEDDvhDjcD9ugehNJEzv68Dhmf" ;
+    var bitcoin_private_key = "5KDc1KoCEPmxxbjvzNdQNCAguaVrFa89LdtfqCKb1PxeSdtmStC" ;
+    var bitcoin_keypair = bitcoin.ECPair.fromWIF(bitcoin_private_key);
+    // get ZeroNet site_info, check user and generate new anonymous money network cert if not logged in with that
     var site_info ;
     ZeroFrame.cmd("siteInfo", {}, function(res) {
         var pgm = module + ' siteInfo callback (1): ' ;
-        console.log(pgm + 'res = ' + JSON.stringify(res));
+        // console.log(pgm + 'res = ' + JSON.stringify(res));
         site_info = res ;
         if (!site_info.cert_user_id || !(/@moneynetwork$/.test(site_info.cert_user_id))) {
-            // not logged in or not logged in that a money network user. Generate new anonymous money network account and login
+            // not logged in or not logged in with a money network user. Generate new anonymous money network cert and login
             var cert;
             cert = bitcoin.message.sign(bitcoin_keypair, (site_info.auth_address + "#web/") + site_info.auth_address.slice(0, 13)).toString("base64");
-            console.log(pgm + 'cert = ' + JSON.stringify(cert)) ;
+            // console.log(pgm + 'cert = ' + JSON.stringify(cert)) ;
             // add cert - no certSelect dialog - continue with just created money network cert
             ZeroFrame.cmd("certAdd", ["moneynetwork", "web", site_info.auth_address.slice(0, 13), cert], function (res) {
                 var pgm = module + " certAdd callback: " ;
-                console.log(pgm + 'res = ' + JSON.stringify(res)) ;
+                // console.log(pgm + 'res = ' + JSON.stringify(res)) ;
                 if (res.error && res.error.startsWith("You already")) {
-                    ZeroFrame.cmd("certSelect", [["zeroid.bit", "nanasi", "moneynetwork"]]);
+                    // ZeroFrame.cmd("certSelect", [["moneynetwork"]]);
                 } else if (res.error) {
                     // ZeroFrame.cmd("wrapperNotification", ["error", "Failed to create account: " + res.error]);
                     return ;
                 } else {
-                    ZeroFrame.cmd("certSelect", [["zeroid.bit", "nanasi", "moneynetwork"]]);
+                    // ZeroFrame.cmd("certSelect", [["moneynetwork"]]);
                 }
                 // get updated site_info. should now be with not null cert_user_id
                 ZeroFrame.cmd("siteInfo", {}, function(res) {
                     var pgm = module + ' siteInfo callback (2): ';
-                    console.log(pgm + 'res = ' + JSON.stringify(res));
+                    // console.log(pgm + 'res = ' + JSON.stringify(res));
                     site_info = res;
                 });
             });

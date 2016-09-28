@@ -99,12 +99,12 @@ ZeroFrame = (function() {
     };
 
     ZeroFrame.prototype.onOpenWebsocket = function() {
-        this.cmd("siteInfo", {}, (function(_this) {
-            return function(site_info) {
-                _this.site_info = site_info;
-                _this.log('siteInfo = ' + JSON.stringify(site_info));
-            };
-        })(this));
+        //this.cmd("siteInfo", {}, (function(_this) {
+        //    return function(site_info) {
+        //        _this.site_info = site_info;
+        //        _this.log('siteInfo = ' + JSON.stringify(site_info));
+        //    };
+        //})(this));
         return this.log("Websocket open");
     };
 
