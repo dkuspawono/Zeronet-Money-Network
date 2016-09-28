@@ -62,38 +62,89 @@ var MoneyNetworkHelper = (function () {
             var pgm = module + '.save_local_storage callback (3): ';
             // console.log(pgm + 'done');
         }) ;
+        var user_info = getItem('user_info');
+        if (!user_info) return ;
+        user_info = JSON.parse(user_info) ;
+        console.log(pgm + 'user_info = ' + JSON.stringify(user_info)) ;
+        console.log(pgm + 'create/update json with search words') ;
+        var inner_path = "data/users/" + site_info.auth_address + "/data.json";
+
+        // update json table with search words (public key, search word, timestamp)
+        ZeroFrame.cmd("fileGet", {inner_path: inner_path, required: false}, function (data) {
+            var pgm = module + '.save_local_storage fileGet callback: ' ;
+            console.log(pgm + 'data = ' + JSON.stringify(data));
+            var json_raw, k, sha;
+            if (data) data = JSON.parse(data);
+            else data = {};
+            data.search = [] ;
+            console.log()
+            for (var i=0 ; i<user_info.length ; i++) {
+                if (user_info[i].privacy != 'Search') continue ;
+                k = {
+                    pubkey: user_info[i].pubkey,
+                    search: user_info[i].value,
+                    time: new Date().getTime()
+                };
+                sha = new jsSHA("SHA-256", "TEXT");
+                sha.update(JSON.stringify([site_info.auth_address, k.pubkey, k.search, k.time]));
+                k.hash = sha.getHash("B64");
+                data.search.push(k);
+            } // for i
+            console.log(pgm + 'data = ' + JSON.stringify(data)) ;
+            json_raw = unescape(encodeURIComponent(JSON.stringify(data, null, "\t")));
+            ZeroFrame.cmd("fileWrite", [inner_path, btoa(json_raw)], function (res) {
+                var pgm = module + '.save_local_storage fileWrite callback: ' ;
+                console.log(pgm + 'res = ' + JSON.stringify(res)) ;
+                if (res === "ok") {
+                    ZeroFrame.cmd("sitePublish", {inner_path: inner_path}, function (res) {
+                        var pgm = module + '.save_local_storage sitePublish callback: ' ;
+                        console.log(pgm + 'res = ' + JSON.stringify(res)) ;
+                        if (res != "ok") ZeroFrame.cmd("wrapperNotification", ["error", "Failed to post: " + res.error]);
+                    });
+                } else ZeroFrame.cmd("wrapperNotification", ["error", "Failed to post: " + res.error]);
+            }); // fileWrite
+        }); // fileGet
+
+
+
     }
 
-    // auto login to ZeroNet with an anonymous account
+    // test if siteInfo already is available in ZeroFrame
+    console.log(module + ': ZeroFrame.site_info = ' + JSON.stringify(ZeroFrame.site_info)) ;
+
+    // auto login to ZeroNet with an anonymous money network account
     // copy/paste from "Nanasi text board" - http://127.0.0.1:43110/16KzwuSAjFnivNimSHuRdPrYd1pNPhuHqN/
-    // bitcoin keypair
-    var nanasi = bitcoin.ECPair.fromWIF("5JTfUUK1Ttep7zECM4uMxjidA9YruKMrGuUhfzNnvW8X7dqg5Ts"); // bitcoin keypair
-    console.log(module + ': nanasi = ' + JSON.stringify(nanasi)) ;
-    // get ZeroNet site_info, check user and generate new anonymous account if not logged in
+    var bitcoin_keypair = bitcoin.ECPair.fromWIF("5JTfUUK1Ttep7zECM4uMxjidA9YruKMrGuUhfzNnvW8X7dqg5Ts"); // bitcoin keypair
+    // console.log(module + ': bitcoin_keypair = ' + JSON.stringify(bitcoin_keypair)) ;
+    // get ZeroNet site_info, check user and generate new anonymous money network account if not logged in
     var site_info ;
     ZeroFrame.cmd("siteInfo", {}, function(res) {
-        var pgm = module + ' siteInfo callback: ' ;
-        // console.log(pgm + 'res = ' + JSON.stringify(res));
+        var pgm = module + ' siteInfo callback (1): ' ;
+        console.log(pgm + 'res = ' + JSON.stringify(res));
         site_info = res ;
-        if (!site_info.cert_user_id) {
-            // not logged in. Generate new anonymous account and login
-            // create nanasi cert
+        if (!site_info.cert_user_id || !(/@moneynetwork$/.test(site_info.cert_user_id))) {
+            // not logged in or not logged in that a money network user. Generate new anonymous money network account and login
             var cert;
-            cert = bitcoin.message.sign(nanasi, (site_info.auth_address + "#web/") + site_info.auth_address.slice(0, 13)).toString("base64");
-            // console.log(pgm + 'cert = ' + JSON.stringify(cert)) ;
-            // add cert - no certSelect dialog - continue with just created nanasi cert
-            ZeroFrame.cmd("certAdd", ["nanasi", "web", site_info.auth_address.slice(0, 13), cert], function (res) {
+            cert = bitcoin.message.sign(bitcoin_keypair, (site_info.auth_address + "#web/") + site_info.auth_address.slice(0, 13)).toString("base64");
+            console.log(pgm + 'cert = ' + JSON.stringify(cert)) ;
+            // add cert - no certSelect dialog - continue with just created money network cert
+            ZeroFrame.cmd("certAdd", ["moneynetwork", "web", site_info.auth_address.slice(0, 13), cert], function (res) {
                 var pgm = module + " certAdd callback: " ;
-                // console.log(pgm + 'res = ' + JSON.stringify(res)) ;
+                console.log(pgm + 'res = ' + JSON.stringify(res)) ;
                 if (res.error && res.error.startsWith("You already")) {
-                    // ZeroFrame.cmd("certSelect", [["zeroid.bit", "nanasi"]]);
-                    // No certSelect - continue with newly created nanasi cert
+                    ZeroFrame.cmd("certSelect", [["zeroid.bit", "nanasi", "moneynetwork"]]);
                 } else if (res.error) {
-                    ZeroFrame.cmd("wrapperNotification", ["error", "Failed to create account: " + res.error]);
+                    // ZeroFrame.cmd("wrapperNotification", ["error", "Failed to create account: " + res.error]);
+                    return ;
                 } else {
-                    // ZeroFrame.cmd("certSelect", [["zeroid.bit", "nanasi"]]);
-                    // No certSelect - continue with newly created nanasi cert
+                    ZeroFrame.cmd("certSelect", [["zeroid.bit", "nanasi", "moneynetwork"]]);
                 }
+                // get updated site_info. should now be with not null cert_user_id
+                ZeroFrame.cmd("siteInfo", {}, function(res) {
+                    var pgm = module + ' siteInfo callback (2): ';
+                    console.log(pgm + 'res = ' + JSON.stringify(res));
+                    site_info = res;
+                });
             });
         }
     });
@@ -688,6 +739,16 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
         }
         function save_user_info () {
             var pgm = service + '.save_user_info: ';
+            var i, crypt ;
+            // generate public/private key pairs for any search words
+            for (i=0 ; i<user_info.length ; i++) {
+                if ((user_info[i].privacy == 'Search') && !user_info[i].prvkey) {
+                    crypt = new JSEncrypt({default_key_size: 2048});
+                    crypt.getKey();
+                    user_info[i].pubkey = crypt.getPublicKey();
+                    user_info[i].prvkey = crypt.getPrivateKey();
+                }
+            }
             MoneyNetworkHelper.setItem('user_info', JSON.stringify(user_info)) ;
             MoneyNetworkHelper.save_local_storage() ;
         }

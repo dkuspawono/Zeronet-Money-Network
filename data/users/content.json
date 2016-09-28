@@ -1,0 +1,24 @@
+{
+ "address": "1JeHa67QEvrrFpsSow82fLypw8LoRcmCXk",
+ "files": {},
+ "ignore": ".*",
+ "inner_path": "data/users/content.json",
+ "modified": 1474986101.155114,
+ "signs": {
+  "1JeHa67QEvrrFpsSow82fLypw8LoRcmCXk": "HLQ9aKSamvb8uL1bPoZC9vPZI1mU//DUjvDibJ5YQ6sqetqQl4UPzf8Jnh0cymqd67fK1HbW2RXY+Skw9QtgDFU="
+ },
+ "user_contents": {
+  "cert_signers": {
+   "moneynetwork": [ "1CCiJ97XHgVeJrkbnzLgfXvYRr8QEWxnWF" ],
+   "nanasi": [ "16PmAP6z2MCJX9jNjvMrteMfnqX4KeDRNT" ],
+   "zeroid.bit": [ "1iD5ZQJMNXu43w1qLB8sfdHVKppVMduGz" ]
+  },
+  "permission_rules": {
+   ".*": {
+    "files_allowed": "data.json",
+    "max_size": 20000
+   }
+  },
+  "permissions": {}
+ }
+}

@@ -55,7 +55,7 @@ ZeroFrame = (function() {
     };
 
     ZeroFrame.prototype.route = function(cmd, message) {
-        return this.log("Unknown command", message);
+        return this.log("ZeroFrame.prototype.route - ignored message ", JSON.stringify(message));
     };
 
     ZeroFrame.prototype.response = function(to, result) {
@@ -99,6 +99,12 @@ ZeroFrame = (function() {
     };
 
     ZeroFrame.prototype.onOpenWebsocket = function() {
+        this.cmd("siteInfo", {}, (function(_this) {
+            return function(site_info) {
+                _this.site_info = site_info;
+                _this.log('siteInfo = ' + JSON.stringify(site_info));
+            };
+        })(this));
         return this.log("Websocket open");
     };
 
