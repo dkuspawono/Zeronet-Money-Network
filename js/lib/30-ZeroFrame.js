@@ -28,7 +28,7 @@ ZeroFrame = (function() {
     ZeroFrame.prototype.connect = function() {
         this.target = window.parent;
         window.addEventListener("message", this.onMessage, false);
-        return this.cmd("innerReady");
+        this.cmd("innerReady");
     };
 
     ZeroFrame.prototype.onMessage = function(e) {
@@ -37,29 +37,34 @@ ZeroFrame = (function() {
         cmd = message.cmd;
         if (cmd === "response") {
             if (this.waiting_cb[message.to] != null) {
-                return this.waiting_cb[message.to](message.result);
+                this.waiting_cb[message.to](message.result);
             } else {
-                return this.log("Websocket callback not found:", message);
+                this.log("Websocket callback not found:", message);
             }
         } else if (cmd === "wrapperReady") {
-            return this.cmd("innerReady");
+            this.cmd("innerReady");
         } else if (cmd === "ping") {
-            return this.response(message.id, "pong");
+            this.response(message.id, "pong");
         } else if (cmd === "wrapperOpenedWebsocket") {
-            return this.onOpenWebsocket();
+            this.onOpenWebsocket();
         } else if (cmd === "wrapperClosedWebsocket") {
-            return this.onCloseWebsocket();
+            this.onCloseWebsocket();
         } else {
-            return this.route(cmd, message);
+            this.route(cmd, message);
         }
     };
 
     ZeroFrame.prototype.route = function(cmd, message) {
-        return this.log("ZeroFrame.prototype.route - ignored message ", JSON.stringify(message));
+        this.log("ZeroFrame.prototype.route: cmd = " + cmd + ', message = ' + JSON.stringify(message));
+        if (cmd == "setSiteInfo") {
+            this.site_info = message.params;
+            this.checkCertUserId() ;
+        }
+        else this.log("ZeroFrame.prototype.route - ignored command", message);
     };
 
     ZeroFrame.prototype.response = function(to, result) {
-        return this.send({
+        this.send({
             "cmd": "response",
             "to": to,
             "result": result
@@ -73,7 +78,7 @@ ZeroFrame = (function() {
         if (cb == null) {
             cb = null;
         }
-        return this.send({
+        this.send({
             "cmd": cmd,
             "params": params
         }, cb);
@@ -88,28 +93,74 @@ ZeroFrame = (function() {
         this.next_message_id += 1;
         this.target.postMessage(message, "*");
         if (cb) {
-            return this.waiting_cb[message.id] = cb;
+            this.waiting_cb[message.id] = cb;
         }
     };
 
     ZeroFrame.prototype.log = function() {
         var args;
         args = 1 <= arguments.length ? slice.call(arguments, 0) : [];
-        return console.log.apply(console, ["[ZeroFrame]"].concat(slice.call(args)));
+        console.log.apply(console, ["[ZeroFrame]"].concat(slice.call(args)));
     };
 
     ZeroFrame.prototype.onOpenWebsocket = function() {
-        //this.cmd("siteInfo", {}, (function(_this) {
-        //    return function(site_info) {
-        //        _this.site_info = site_info;
-        //        _this.log('siteInfo = ' + JSON.stringify(site_info));
-        //    };
-        //})(this));
-        return this.log("Websocket open");
+        // get siteInfo at startup
+        this.cmd("siteInfo", {}, (function(_this) {
+            return function(site_info) {
+                _this.site_info = site_info;
+                _this.log('siteInfo = ' + JSON.stringify(site_info));
+                _this.checkCertUserId() ;
+            };
+        })(this));
+        this.log("Websocket open");
     };
 
+
+    ZeroFrame.prototype.checkCertUserId = function() {
+        // user must be logged in with a moneynetwork cert
+        this.log("checkCertUserId: site_info = " + JSON.stringify(this.site_info));
+        this.log("checkCertUserId: cert_user_id = " + this.site_info.cert_user_id);
+        if (this.site_info.cert_user_id) return ; // already logged in
+        // login to ZeroNet with an anonymous money network account
+        // copy/paste from "Nanasi text board" - http://127.0.0.1:43110/16KzwuSAjFnivNimSHuRdPrYd1pNPhuHqN/
+        // short documention can be in posts on "Nanasi text board"
+        // http://127.0.0.1:43110/Talk.ZeroNetwork.bit/?Topic:6_13hcYDp4XW3GQo4LMtmPf8qUZLZcxFSmVw
+        this.log("checkCertUserId: create moneynetwork cert");
+        var bitcoin_public_key = "1D2f1XV3zEDDvhDjcD9ugehNJEzv68Dhmf" ;
+        var bitcoin_private_key = "5KDc1KoCEPmxxbjvzNdQNCAguaVrFa89LdtfqCKb1PxeSdtmStC" ;
+        var bitcoin_keypair = bitcoin.ECPair.fromWIF(bitcoin_private_key);
+        var cert;
+        cert = bitcoin.message.sign(bitcoin_keypair, (this.site_info.auth_address + "#web/") + this.site_info.auth_address.slice(0, 13)).toString("base64");
+        // console.log(pgm + 'cert = ' + JSON.stringify(cert)) ;
+        // add cert - no certSelect dialog - continue with just created money network cert
+        this.log("checkCertUserId: add moneynetwork cert");
+        this.cmd("certAdd", ["moneynetwork", "web", this.site_info.auth_address.slice(0, 13), cert], (function(_this) {
+            return function (res) {
+                var pgm = "checkCertUserId: certAdd callback: ";
+                _this.log(pgm + 'res = ' + JSON.stringify(res));
+                if (res.error && res.error.startsWith("You already")) {
+                    // _this.cmd("certSelect", [["moneynetwork"]]);
+                    _this.cmd("wrapperNotification", ["done", "Created a new anonymous moneynetwork user account for you"]);
+                    // _this.log("angularJS: please reload page");
+                    // _this.reload_page = true ;
+
+                } else if (res.error) {
+                    _this.cmd("wrapperNotification", ["error", "Failed to create account: " + res.error]);
+                    return;
+                } else {
+                    // _this.cmd("certSelect", [["moneynetwork"]]);
+                    _this.cmd("wrapperNotification", ["done", "Created a new anonymous moneynetwork user account for you"]);
+                    // _this.log("angularJS: please reload page");
+                    // _this.reload_page = true ;
+                }
+            }
+        })(this));
+    };
+
+
+
     ZeroFrame.prototype.onCloseWebsocket = function() {
-        return this.log("Websocket close");
+        this.log("Websocket close");
     };
 
     return ZeroFrame;

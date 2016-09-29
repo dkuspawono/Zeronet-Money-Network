@@ -71,27 +71,35 @@ var MoneyNetworkHelper = (function () {
     // write JS copy of local storage back to ZeroFrame API
     function save_local_storage() {
         var pgm = module + '.save_local_storage: ' ;
-        // console.log(pgm + 'saving local_storage to ZeroFrame API = ' + JSON.stringify(local_storage));
+        console.log(pgm + 'calling wrapperSetLocalStorage');
         ZeroFrame.cmd("wrapperSetLocalStorage", [local_storage], function () {
-            var pgm = module + '.save_local_storage callback (3): ';
-            // console.log(pgm + 'done');
+            var pgm = module + '.save_local_storage wrapperSetLocalStorage callback: ';
+            console.log(pgm + 'OK');
         }) ;
     } // save_local_storage
 
     // post user_info (search words) to ZeroNet
     function post_user_info () {
+        var pgm = module + '. post_user_info: ';
+
+        // test siteInfo. could be different siteInfo ...
+        console.log(pgm + 'ZeroFrame.site_info = ' + JSON.stringify(ZeroFrame.site_info)) ;
+        console.log(pgm + 'MoneyNetworkHelper.site_info = ' + JSON.stringify(ZeroFrame.site_info)) ;
+
         var user_info = getItem('user_info');
         if (!user_info) user_info = [] ;
         else user_info = JSON.parse(user_info) ;
         var pubkey = getItem('pubkey') ;
         // console.log(pgm + 'user_info = ' + JSON.stringify(user_info)) ;
         // console.log(pgm + 'create/update json with search words') ;
-        var inner_path = "data/users/" + site_info.auth_address + "/data.json";
+        var data_inner_path = "data/users/" + site_info.auth_address + "/data.json";
+        var content_inner_path = "data/users/" + site_info.auth_address + "/content.json";
 
         // update json table with public key and search words
-        ZeroFrame.cmd("fileGet", {inner_path: inner_path, required: false}, function (data) {
-            var pgm = module + '.save_local_storage fileGet callback: ' ;
-            // console.log(pgm + 'data = ' + JSON.stringify(data));
+        console.log(pgm + 'calling fileGet: inner_path = ' + data_inner_path + ', required = false');
+        ZeroFrame.cmd("fileGet", {inner_path: data_inner_path, required: false}, function (data) {
+            var pgm = module + '.post_user_info fileGet callback: ' ;
+            console.log(pgm + 'data = ' + JSON.stringify(data));
             var json_raw, row;
             if (data) data = JSON.parse(data);
             else data = {};
@@ -109,13 +117,15 @@ var MoneyNetworkHelper = (function () {
             } // for i
             // console.log(pgm + 'data = ' + JSON.stringify(data)) ;
             json_raw = unescape(encodeURIComponent(JSON.stringify(data, null, "\t")));
-            ZeroFrame.cmd("fileWrite", [inner_path, btoa(json_raw)], function (res) {
-                var pgm = module + '.save_local_storage fileWrite callback: ' ;
-                // console.log(pgm + 'res = ' + JSON.stringify(res)) ;
+            console.log(pgm + 'calling fileWrite: inner_path = ' + data_inner_path + ', data = ' + JSON.stringify(btoa(json_raw)));
+            ZeroFrame.cmd("fileWrite", [data_inner_path, btoa(json_raw)], function (res) {
+                var pgm = module + '.post_user_info fileWrite callback: ' ;
+                console.log(pgm + 'res = ' + JSON.stringify(res)) ;
                 if (res === "ok") {
-                    ZeroFrame.cmd("sitePublish", {inner_path: inner_path}, function (res) {
-                        var pgm = module + '.save_local_storage sitePublish callback: ' ;
-                        // console.log(pgm + 'res = ' + JSON.stringify(res)) ;
+                    console.log(pgm + 'calling sitePublish: inner_path = ' + content_inner_path) ;
+                    ZeroFrame.cmd("sitePublish", {inner_path: content_inner_path}, function (res) {
+                        var pgm = module + '.post_user_info sitePublish callback: ' ;
+                        console.log(pgm + 'res = ' + JSON.stringify(res)) ;
                         if (res != "ok") ZeroFrame.cmd("wrapperNotification", ["error", "Failed to post: " + res.error]);
                     }); // sitePublish
                 } else ZeroFrame.cmd("wrapperNotification", ["error", "Failed to post: " + res.error]);
@@ -149,12 +159,12 @@ var MoneyNetworkHelper = (function () {
                 var pgm = module + " certAdd callback: " ;
                 // console.log(pgm + 'res = ' + JSON.stringify(res)) ;
                 if (res.error && res.error.startsWith("You already")) {
-                    // ZeroFrame.cmd("certSelect", [["moneynetwork"]]);
+                    ZeroFrame.cmd("certSelect", [["zeroid.bit", "nanasi", "moneynetwork"]]);
                 } else if (res.error) {
-                    // ZeroFrame.cmd("wrapperNotification", ["error", "Failed to create account: " + res.error]);
+                    ZeroFrame.cmd("wrapperNotification", ["error", "Failed to create account: " + res.error]);
                     return ;
                 } else {
-                    // ZeroFrame.cmd("certSelect", [["moneynetwork"]]);
+                    ZeroFrame.cmd("certSelect", [["zeroid.bit", "nanasi", "moneynetwork"]]);
                 }
                 // get updated site_info. should now be with not null cert_user_id
                 ZeroFrame.cmd("siteInfo", {}, function(res) {
@@ -728,7 +738,7 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
     }])
 
 
-    .factory('MoneyNetworkService', [function() {
+    .factory('MoneyNetworkService', ['$timeout', function($timeout) {
         var self = this;
         var service = 'MoneyNetworkService' ;
         console.log(service + ' loaded') ;
@@ -772,8 +782,10 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
                 }
             }
             MoneyNetworkHelper.setItem('user_info', JSON.stringify(user_info)) ;
-            MoneyNetworkHelper.save_local_storage() ;
-            MoneyNetworkHelper.post_user_info() ;
+            $timeout(function () {
+                MoneyNetworkHelper.save_local_storage() ;
+                MoneyNetworkHelper.post_user_info() ;
+            })
         }
 
         // privacy options for user info - descriptions in privacyTitleFilter
