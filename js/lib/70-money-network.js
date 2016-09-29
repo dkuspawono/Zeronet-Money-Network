@@ -37,8 +37,16 @@ var MoneyNetworkHelper = (function () {
     // sessionStorage.
     var session_storage = {} ;
 
-    // localStorage javascript copy loaded from ZeroFrame API. Initialized asyn. Takes a few seconds before local_storage JS object is initialized
-    var local_storage = {} ;
+    // localStorage javascript copy loaded from ZeroFrame API. Initialized asyn. Takes a moment before JS local_storage copy is ready
+    var local_storage = { loading: true } ;
+    function local_storage_is_loading () {
+        return local_storage.loading ;
+    }
+    var local_storage_functions = [] ; // functions waiting for localStorage to be ready
+    function local_storage_bind(f) {
+        if (local_storage.loading) local_storage_functions.push(f);
+        else f() ;
+    }
     ZeroFrame.cmd("wrapperGetLocalStorage", [], function (res) {
         var pgm = module + '.wrapperGetLocalStorage callback (1): ';
         // console.log(pgm + 'typeof res =' + typeof res) ;
@@ -52,6 +60,12 @@ var MoneyNetworkHelper = (function () {
         for (key in local_storage) if (!res.hasOwnProperty(key)) delete local_storage[key] ;
         for (key in res) local_storage[key] = res[key] ;
         // console.log(pgm + 'local_storage = ' + JSON.stringify(local_storage));
+        // execute any function waiting for localStorage to be ready
+        for (var i=0 ; i<local_storage_functions.length ; i++) {
+            var f = local_storage_functions[i] ;
+            f();
+        }
+        local_storage_functions.length = 0 ;
     }) ;
 
     // write JS copy of local storage back to ZeroFrame API
@@ -645,6 +659,8 @@ var MoneyNetworkHelper = (function () {
         getItem: getItem,
         setItem: setItem,
         removeItem: removeItem,
+        local_storage_is_loading: local_storage_is_loading,
+        local_storage_bind: local_storage_bind,
         save_local_storage: save_local_storage,
         post_user_info: post_user_info,
         getUserId: getUserId,
@@ -727,13 +743,16 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
         // user info. Array with tag, value and privacy.
         // saved in localStorage. Shared with contacts depending on privacy choice
         var user_info = [] ;
+        function empty_user_info_line() {
+            return { tag: '', value: '', privacy: ''} ;
+        }
         function load_user_info () {
             var pgm = service + '.load_user_info: ';
             var user_info_str, new_user_info ;
             var user_info_str = MoneyNetworkHelper.getItem('user_info') ;
             // console.log(pgm + 'user_info_str = ' + user_info_str) ;
             if (user_info_str) new_user_info = JSON.parse(user_info_str) ;
-            else new_user_info = [{ tag: '', value: '', privacy: ''}] ;
+            else new_user_info = [empty_user_info_line()] ;
             user_info.splice(0,user_info.length) ;
             for (var i=0 ; i<new_user_info.length ; i++) user_info.push(new_user_info[i]) ;
         }
@@ -775,6 +794,7 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
             get_privacy_options: get_privacy_options,
             get_show_privacy_title: get_show_privacy_title,
             set_show_privacy_title: set_show_privacy_title,
+            empty_user_info_line: empty_user_info_line,
             load_user_info: load_user_info,
             get_user_info: get_user_info,
             save_user_info: save_user_info
@@ -800,7 +820,19 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
         self.is_logged_in = function () {
             return MoneyNetworkHelper.getUserId();
         };
-        self.register = self.is_logged_in() ? '' : 'N';
+        self.register = 'N' ;
+        function set_register() {
+            var pgm = controller + '.login_or_register: ' ;
+            var passwords, no_users ;
+            passwords = MoneyNetworkHelper.getItem('passwords') ;
+            if (!passwords) no_users = 0 ;
+            else no_users = JSON.parse(passwords).length ;
+            console.log(pgm + 'passwords = ' + passwords + ', no_users = ' + no_users) ;
+            self.register = (no_users == 0) ? 'Y' : 'N';
+        }
+        if (MoneyNetworkHelper.local_storage_is_loading()) MoneyNetworkHelper.local_storage_bind(set_register) ;
+        else set_register() ;
+
         self.login_disabled = function () {
             if (self.register != 'N') return true;
             if (!self.device_password) return true;
@@ -833,7 +865,10 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
                 self.confirm_device_password = '';
                 self.register = 'N';
                 moneyNetworkService.load_user_info() ;
-                $location.path('/home');
+                var user_info = moneyNetworkService.get_user_info() ;
+                var empty_user_info_str = JSON.stringify([moneyNetworkService.empty_user_info_line()]) ;
+                if (JSON.stringify(user_info) == empty_user_info_str) $location.path('/user');
+                else $location.path('/home');
                 $location.replace();
             }
         };
@@ -857,7 +892,7 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
             var index ;
             for (var i=0 ; i<self.user_info.length ; i++) if (self.user_info[i].$$hashKey == row.$$hashKey) index = i ;
             index = index + 1 ;
-            self.user_info.splice(index, 0, { tag: '', value: '', privacy: ''});
+            self.user_info.splice(index, 0, moneyNetworkService.empty_user_info_line());
             $scope.$apply();
         };
         self.delete_row = function(row) {
@@ -866,7 +901,7 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
             for (var i=0 ; i<self.user_info.length ; i++) if (self.user_info[i].$$hashKey == row.$$hashKey) index = i ;
             console.log(pgm + 'row = ' + JSON.stringify(row)) ;
             self.user_info.splice(index, 1);
-            if (self.user_info.length == 0) self.user_info.splice(index, 0, { tag: '', value: '', privacy: ''});
+            if (self.user_info.length == 0) self.user_info.splice(index, 0, moneyNetworkService.empty_user_info_line());
         };
 
         // user_info validations
