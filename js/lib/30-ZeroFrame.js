@@ -55,7 +55,7 @@ ZeroFrame = (function() {
     };
 
     ZeroFrame.prototype.route = function(cmd, message) {
-        this.log("ZeroFrame.prototype.route: cmd = " + cmd + ', message = ' + JSON.stringify(message));
+        // this.log("ZeroFrame.prototype.route: cmd = " + cmd + ', message = ' + JSON.stringify(message));
         if (cmd == "setSiteInfo") {
             this.site_info = message.params;
             this.checkCertUserId() ;
@@ -108,7 +108,7 @@ ZeroFrame = (function() {
         this.cmd("siteInfo", {}, (function(_this) {
             return function(site_info) {
                 _this.site_info = site_info;
-                _this.log('siteInfo = ' + JSON.stringify(site_info));
+                // _this.log("ZeroFrame.prototype.onOpenWebsocket: siteInfo = " + JSON.stringify(site_info));
                 _this.checkCertUserId() ;
             };
         })(this));
@@ -130,20 +130,18 @@ ZeroFrame = (function() {
         cert = bitcoin.message.sign(bitcoin_keypair, (this.site_info.auth_address + "#web/") + this.site_info.auth_address.slice(0, 13)).toString("base64");
         // console.log(pgm + 'cert = ' + JSON.stringify(cert)) ;
         // add cert - no certSelect dialog - continue with just created money network cert
-        this.log("checkCertUserId: add moneynetwork cert");
+        // this.log("checkCertUserId: add moneynetwork cert");
         this.cmd("certAdd", ["moneynetwork", "web", this.site_info.auth_address.slice(0, 13), cert], (function(_this) {
             return function (res) {
                 var pgm = "checkCertUserId: certAdd callback: ";
-                _this.log(pgm + 'res = ' + JSON.stringify(res));
-                if (res.error && res.error.startsWith("You already")) {
-                    // _this.cmd("certSelect", [["moneynetwork"]]);
-                    _this.cmd("wrapperNotification", ["done", "Created a new anonymous moneynetwork user account for you"]);
-                } else if (res.error) {
-                    _this.cmd("wrapperNotification", ["error", "Failed to create account: " + res.error]);
-                } else {
-                    // _this.cmd("certSelect", [["moneynetwork"]]);
-                    _this.cmd("wrapperNotification", ["done", "Created a new anonymous moneynetwork user account for you"]);
-                }
+                // _this.log(pgm + 'res = ' + JSON.stringify(res));
+                if (res.error) { _this.cmd("wrapperNotification", ["error", "Failed to create account: " + res.error]); return ; }
+                // certAdd OK. Recheck site_info. site_info.cert_user_id should be not null now. sometime user must select newly created cert
+                _this.cmd("siteInfo", {}, function(site_info) {
+                    if (site_info.cert_user_id) return ;
+                    _this.cmd("certSelect", [["moneynetwork"]]);
+                });
+
             }
         })(this));
     };

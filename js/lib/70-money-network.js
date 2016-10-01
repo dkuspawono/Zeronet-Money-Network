@@ -140,6 +140,13 @@ var MoneyNetworkHelper = (function () {
     function zeronet_update_user_info () {
         var pgm = module + '. zeronet_update_user_info: ';
 
+        // check if auto generate cert + login in ZeroFrame was OK
+        if (!ZeroFrame.site_info.cert_user_id) {
+            ZeroFrame.cmd("wrapperNotification", ["error", "Ups. Something is wrong. Not logged in on ZeroNet. Cannot post search words in Zeronet. siteInfo.cert_user_id is null"]);
+            console.log(pgm + 'site_info = ' + JSON.stringify(ZeroFrame.site_info));
+            return ;
+        }
+
         var user_info = getItem('user_info');
         if (!user_info) user_info = [] ;
         else user_info = JSON.parse(user_info) ;
@@ -150,17 +157,20 @@ var MoneyNetworkHelper = (function () {
         var content_inner_path = "data/users/" + ZeroFrame.site_info.auth_address + "/content.json";
 
         // update json table with public key and search words
-        // console.log(pgm + 'calling fileGet: inner_path = ' + data_inner_path + ', required = false');
+        console.log(pgm + 'calling fileGet: inner_path = ' + data_inner_path + ', required = false');
         ZeroFrame.cmd("fileGet", {inner_path: data_inner_path, required: false}, function (data) {
             var pgm = module + '.zeronet_update_user_info fileGet callback: ' ;
-            // console.log(pgm + 'data = ' + JSON.stringify(data));
+            console.log(pgm + 'data = ' + JSON.stringify(data));
             var json_raw, row;
             if (data) {
                 data = JSON.parse(data);
                 zeronet_migrate_data(data);
             }
-            else data = {};
-            if (!data.version) data.version = 2 ;
+            else data = {
+                version: 2,
+                users: [],
+                search: []
+            };
             // find current user in users array
             var max_user_seq = 0, user_seq, i ;
             for (i=0 ; i<data.users.length ; i++) {
@@ -177,7 +187,6 @@ var MoneyNetworkHelper = (function () {
                 }) ;
                 // console.log(pgm + 'added user to data.users. data = ' + JSON.stringify(data)) ;
             }
-            if (!data.search) data.search = [] ;
             // remove old data for user in search array
             for (i=data.search.length-1 ; i>=0 ; i--) {
                 if (data.search[i].user_seq == user_seq) data.search.splice(i,1);
@@ -196,15 +205,15 @@ var MoneyNetworkHelper = (function () {
             } // for i
             // console.log(pgm + 'added new rows for user_seq ' + user_seq + ', data = ' + JSON.stringify(data)) ;
             json_raw = unescape(encodeURIComponent(JSON.stringify(data, null, "\t")));
-            // console.log(pgm + 'calling fileWrite: inner_path = ' + data_inner_path + ', data = ' + JSON.stringify(btoa(json_raw)));
+            console.log(pgm + 'calling fileWrite: inner_path = ' + data_inner_path + ', data = ' + JSON.stringify(btoa(json_raw)));
             ZeroFrame.cmd("fileWrite", [data_inner_path, btoa(json_raw)], function (res) {
                 var pgm = module + '.zeronet_update_user_info fileWrite callback: ' ;
-                // console.log(pgm + 'res = ' + JSON.stringify(res)) ;
+                console.log(pgm + 'res = ' + JSON.stringify(res)) ;
                 if (res === "ok") {
-                    // console.log(pgm + 'calling sitePublish: inner_path = ' + content_inner_path) ;
+                    console.log(pgm + 'calling sitePublish: inner_path = ' + content_inner_path) ;
                     ZeroFrame.cmd("sitePublish", {inner_path: content_inner_path}, function (res) {
                         var pgm = module + '.zeronet_update_user_info sitePublish callback: ' ;
-                        // console.log(pgm + 'res = ' + JSON.stringify(res)) ;
+                        console.log(pgm + 'res = ' + JSON.stringify(res)) ;
                         if (res != "ok") ZeroFrame.cmd("wrapperNotification", ["error", "Failed to post: " + res.error]);
                     }); // sitePublish
                 } else ZeroFrame.cmd("wrapperNotification", ["error", "Failed to post: " + res.error]);
@@ -857,7 +866,9 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
             MoneyNetworkHelper.setItem('user_info', JSON.stringify(user_info)) ;
             $timeout(function () {
                 MoneyNetworkHelper.local_storage_save() ;
+                console.log(pgm + 'before zeronet_update_user_info') ;
                 MoneyNetworkHelper.zeronet_update_user_info() ;
+                console.log(pgm + 'after zeronet_update_user_info') ;
             })
         }
 
