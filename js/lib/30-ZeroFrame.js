@@ -118,14 +118,11 @@ ZeroFrame = (function() {
 
     ZeroFrame.prototype.checkCertUserId = function() {
         // user must be logged in with a moneynetwork cert
-        this.log("checkCertUserId: site_info = " + JSON.stringify(this.site_info));
-        this.log("checkCertUserId: cert_user_id = " + this.site_info.cert_user_id);
         if (this.site_info.cert_user_id) return ; // already logged in
         // login to ZeroNet with an anonymous money network account
         // copy/paste from "Nanasi text board" - http://127.0.0.1:43110/16KzwuSAjFnivNimSHuRdPrYd1pNPhuHqN/
         // short documention can be in posts on "Nanasi text board"
         // http://127.0.0.1:43110/Talk.ZeroNetwork.bit/?Topic:6_13hcYDp4XW3GQo4LMtmPf8qUZLZcxFSmVw
-        this.log("checkCertUserId: create moneynetwork cert");
         var bitcoin_public_key = "1D2f1XV3zEDDvhDjcD9ugehNJEzv68Dhmf" ;
         var bitcoin_private_key = "5KDc1KoCEPmxxbjvzNdQNCAguaVrFa89LdtfqCKb1PxeSdtmStC" ;
         var bitcoin_keypair = bitcoin.ECPair.fromWIF(bitcoin_private_key);
@@ -141,22 +138,15 @@ ZeroFrame = (function() {
                 if (res.error && res.error.startsWith("You already")) {
                     // _this.cmd("certSelect", [["moneynetwork"]]);
                     _this.cmd("wrapperNotification", ["done", "Created a new anonymous moneynetwork user account for you"]);
-                    // _this.log("angularJS: please reload page");
-                    // _this.reload_page = true ;
-
                 } else if (res.error) {
                     _this.cmd("wrapperNotification", ["error", "Failed to create account: " + res.error]);
-                    return;
                 } else {
                     // _this.cmd("certSelect", [["moneynetwork"]]);
                     _this.cmd("wrapperNotification", ["done", "Created a new anonymous moneynetwork user account for you"]);
-                    // _this.log("angularJS: please reload page");
-                    // _this.reload_page = true ;
                 }
             }
         })(this));
     };
-
 
 
     ZeroFrame.prototype.onCloseWebsocket = function() {

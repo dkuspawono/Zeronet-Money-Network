@@ -4,20 +4,30 @@
   "version": 2,
   "maps": {
     "users/.+/data.json": {
-      "to_table": [ "search" ],
-      "to_keyvalue": [ "sha256", "pubkey" ]
+      "to_table": [ "search", "users" ]
     }
   },
   "tables": {
     "search": {
       "cols": [
+        ["user_seq", "INTEGER"],
         ["tag", "TEXT"],
         ["value", "TEXT"],
         ["time", "INTEGER"],
         ["json_id", "INTEGER REFERENCES json (json_id)"]
       ],
       "indexes": ["CREATE INDEX search_i1 ON search(value, tag)"],
-      "schema_changed": 1
+      "schema_changed": 2
+    },
+    "users": {
+      "cols": [
+        ["user_seq", "INTEGER"],
+        ["sha256", "TEXT"],
+        ["pubkey", "TEXT"],
+        ["json_id", "INTEGER REFERENCES json (json_id)"]
+      ],
+      "indexes": ["CREATE INDEX search_i2 ON users(sha256)"],
+      "schema_changed": 2
     }
   }
 }

@@ -37,12 +37,9 @@ var MoneyNetworkHelper = (function () {
     // sessionStorage.
     var session_storage = {} ;
 
-    // localStorage javascript copy loaded from ZeroFrame API. Initialized asyn. Takes a moment before JS local_storage copy is ready
+    // localStorage javascript copy is loaded from ZeroFrame API. Initialized asyn. Takes a moment before JS local_storage copy is ready
     var local_storage = { loading: true } ;
-    function local_storage_is_loading () {
-        return local_storage.loading ;
-    }
-    var local_storage_functions = [] ; // functions waiting for localStorage to be ready
+    var local_storage_functions = [] ; // functions waiting for localStorage to be ready. see authCtrl.set_register_yn
     function local_storage_bind(f) {
         if (local_storage.loading) local_storage_functions.push(f);
         else f() ;
@@ -69,22 +66,79 @@ var MoneyNetworkHelper = (function () {
     }) ;
 
     // write JS copy of local storage back to ZeroFrame API
-    function save_local_storage() {
-        var pgm = module + '.save_local_storage: ' ;
+    function local_storage_save() {
+        var pgm = module + '.local_storage_save: ' ;
         console.log(pgm + 'calling wrapperSetLocalStorage');
         ZeroFrame.cmd("wrapperSetLocalStorage", [local_storage], function () {
-            var pgm = module + '.save_local_storage wrapperSetLocalStorage callback: ';
+            var pgm = module + '.local_storage_save wrapperSetLocalStorage callback: ';
             console.log(pgm + 'OK');
         }) ;
-    } // save_local_storage
+    } // local_storage_save
 
-    // post user_info (search words) to ZeroNet
-    function post_user_info () {
-        var pgm = module + '. post_user_info: ';
 
-        // test siteInfo. could be different siteInfo ...
-        console.log(pgm + 'ZeroFrame.site_info = ' + JSON.stringify(ZeroFrame.site_info)) ;
-        console.log(pgm + 'MoneyNetworkHelper.site_info = ' + JSON.stringify(ZeroFrame.site_info)) ;
+    // convert data.json to newest version. compare dbschema.schema_changed and data.version.
+    function zeronet_migrate_data (json) {
+        var pgm = module + '.zeronet_migrate_data: ' ;
+        if (!json.version) json.version = 1 ;
+        var dbschema_version = 2 ;
+        if (json.version == dbschema_version) return ;
+        var i ;
+        // data.json version 1
+        // missing multiple users support. there are following problems in version 1:
+        //   a) there can be multiple user accounts in a client
+        //   b) one client can connect to other ZeroNet accounts
+        //   c) one ZeroNet user can use multiple devices
+        //{ "sha256": "5874fe64f6cb50d2410b7d9e1031d4403531d796a70968a3eabceb71721af0fc",
+        //  "pubkey": "-----BEGIN PUBLIC KEY-----\nMIIBITANBgkqhkiG9w0BAQEFAAOCAQ4AMIIBCQKCAQB5lpAS1uVBKhoo/W3Aas17\nns/VXuaIrAQfvAF30yCH+j5+MoyqMib9M0b6mWlLFnSvk/zrZYUyCXf1PrtYDqtn\nsXulIYEhdKsjkAmnfSeL3CofQu8tl3fxbr1r2hj/XyWPwo3oTsamoyMaFlJLrOsl\n/+IOZswP6IdgNVNa8Xs2UDM3w9TWisCScsHJDw7i7fSJdhFVdQvlFhfhWHHdcXAz\nmBA2oQaNtbOukKS16F4WVPN5d00R13iqqL9AXEYrWs0tggYQ+KKyO2+kRLFUDj8z\nWm2BdvRgfHTqxViEa4eFf+ceukpobnZdStjdxJW9jk4Q2Iiw6CLv+CrtSiz7tMzv\nAgMBAAE=\n-----END PUBLIC KEY-----",
+        //  "search": [{ "tag": "name", "value": "xxxx", "time": 1475175779840 }]
+        //};
+        if (json.version == 1) {
+            // convert from version 1 to 2
+            // add users array
+            console.log(pgm + 'json version 1 = ' + JSON.stringify(json)) ;
+            json.users = [{ user_seq: 1, sha256: json.sha256, pubkey: json.pubkey}] ;
+            delete json.sha256 ;
+            delete json.pubkey ;
+            // add user_seq to search array
+            if (!json.search) json.search = [] ;
+            for (i=0 ; i<json.search.length ; i++) json.search[i].user_seq = 1 ;
+            json.version = 2 ;
+        }
+        // data.json version 2
+        // minor problem. Should move time from search array to users array (timestamp for last update)
+        // { "search": [
+        //     {"user_seq": 3, "tag": "Name", "value": "xxx", "time": 1475318394228},
+        //     {"user_seq": 4, "tag": "Name", "value": "xxx", "time": 1475318987160} ],
+        //   "version": 2,
+        //   "users": [
+        //     {"user_seq": 1, "sha256": "97526f811cd0e93cfa77d9558a367238132bf5f8966c93fc88931eac574d6980", "pubkey": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnwCwB9wCrtZK6QoTXj4D\nQelvBWqay0l07yqKF1NBh7Hr2PNmxy2OuTGyQp8KtdL8IwqNGFyiU72ig6zHoSgA\nsmWoPcwG3XLOvzb2o4LC9dY5E0KrW+wMoiRWNloVriKavUF4FwNeTCN5Q3o0+g2W\nHvSPq8Oz06d11BUtDJ88eVu+TeHC+Wk/JYXdcOnQf9cxM+wZSrDvTLXoyjtsFxWe\nUV3lE03Xss2SSOCggR5tmht9G6D68JB0rOKe6VcQ0tbHO292P0EMNOydcoJn0Edw\nzAdFo/XkQLXC/Cl4XDuE/RD1qH+1O7C4Bs9eG2EBdgmzvM5HqbvmvvYZzUDBgFuZ\nmQIDAQAB\n-----END PUBLIC KEY-----"},
+        //     {"user_seq": 2, "sha256": "8bec70849d1531948c12001f11a928862732e661fbf0708aa404d94eeaab99bf", "pubkey": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAr2OsRJv06+Iap7YfFAtk\nzSmkDNPyN6fNcKJuSmPLRa2p4kh4WhHrJLuqua9jD42MkH3BkD3qcDhYqaGZvH9i\nPxxg8uYdl+XZuTsUfjTnWaaQODX/9Dgy75Ow+0H5DbmJKTAESREiqwegNkXyYuje\nN2UhXiLFaDsXz8OXgKOEBFei5r/EXcRKTCytglubuu7skxLrV/AQ8a+/+JcwI4a7\n3ezaSjeopHiglZi2h8U1wPuAopvjh+B107WctGV1iUv0I8yzbaUgkllTouL1hrr3\n1tR4TYMTuoReT+l+dqPyOKjKDai02Fb9ZZydtNmF2R33uFp4gPLTUoAwh7r//SW/\njwIDAQAB\n-----END PUBLIC KEY-----"},
+        //     {"user_seq": 3, "sha256": "94a4f3887315a7bb01d836ecb6e15502c707865ff108b47ea05fa7bced794f3e", "pubkey": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqK1lnagsPFXalq9vlL5K\nqqlWBffQYUGptJH7DlLsRff+tc2W62yEQ9+ibBkerZdwrRWsG/thN0lWxeLxTuw5\nmmuF4eLsKoubH/tQJF3XrhOoUn4M7tVtGwL5aN/BG1W22l2F+Rb8Q7Tjtf3Rqdw/\nSk46CWnEZ2x1lEcj9Gl+7q7oSLocjKWURaC61zJbBmYO4Aet+/MktN0gW1VEjpPU\nr1/yEhX5EfDNwDNgOUN43aIJkv5+WcgkiGZf56ZqEauwoKsg9xB2c8v6LTv8DZlj\n+OJ/L99sVXP+QzA2yO/EQIbaCNa3Gu35GynZPoH/ig2yx0BMPu7+4/QLiIqAT4co\n+QIDAQAB\n-----END PUBLIC KEY-----"},
+        //     {"user_seq": 4, "sha256": "0f5454007ceee575e63b52058768ff1bc0f1cb79b883d0dcf6a920426836c2c7", "pubkey": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAiANtVIyOC+MIeEhnkVfS\nn/CBDt0GWCba4U6EeUDbvf+HQGfY61e9cU+XMbI8sX7b9R5G7T+zdVqbmEIZwNEb\nDn9NIs4PVA/xqemrQUrm3qEHK8iq/+5CUwVeKeb6879FgPL8fSj1E3nNQPnmuh8N\nE+/04PraakAj9A6Z1OE5m+sfC59IDwYTKupB53kX3ZzHMmWtdYYEr08Zq9XHuYMM\nA4ykOqENGvquGjPnTB4ASKfRTLCUC+TsG5Pd+2ZswxxU3zG5v/dczj+l3GKaaxP7\nxEqA8nFYiU7LiA1MUzQlQDYj/t7ckRdjGH51GvZxlGFFaGQv3yqzs7WddZg8sqMM\nUQIDAQAB\n-----END PUBLIC KEY-----"}
+        //   ]
+        // }
+        if (json.version == 2) {
+            // convert from version 2 to 3
+        }
+        if (json.version == 3) {
+            // convert from version 3 to 4
+        }
+        if (json.version == 4) {
+            // convert from version 4 to 5
+        }
+        if (json.version == 5) {
+            // convert from version 5 to 6
+        }
+        // etc
+        console.log(pgm + 'json version ' + json.version + ' = ' + JSON.stringify(json)) ;
+
+        return ;
+    } // zeronet_migrate_data
+
+
+    // update user_info (search words) on ZeroNet
+    function zeronet_update_user_info () {
+        var pgm = module + '. zeronet_update_user_info: ';
 
         var user_info = getItem('user_info');
         if (!user_info) user_info = [] ;
@@ -92,89 +146,115 @@ var MoneyNetworkHelper = (function () {
         var pubkey = getItem('pubkey') ;
         // console.log(pgm + 'user_info = ' + JSON.stringify(user_info)) ;
         // console.log(pgm + 'create/update json with search words') ;
-        var data_inner_path = "data/users/" + site_info.auth_address + "/data.json";
-        var content_inner_path = "data/users/" + site_info.auth_address + "/content.json";
+        var data_inner_path = "data/users/" + ZeroFrame.site_info.auth_address + "/data.json";
+        var content_inner_path = "data/users/" + ZeroFrame.site_info.auth_address + "/content.json";
 
         // update json table with public key and search words
-        console.log(pgm + 'calling fileGet: inner_path = ' + data_inner_path + ', required = false');
+        // console.log(pgm + 'calling fileGet: inner_path = ' + data_inner_path + ', required = false');
         ZeroFrame.cmd("fileGet", {inner_path: data_inner_path, required: false}, function (data) {
-            var pgm = module + '.post_user_info fileGet callback: ' ;
-            console.log(pgm + 'data = ' + JSON.stringify(data));
+            var pgm = module + '.zeronet_update_user_info fileGet callback: ' ;
+            // console.log(pgm + 'data = ' + JSON.stringify(data));
             var json_raw, row;
-            if (data) data = JSON.parse(data);
+            if (data) {
+                data = JSON.parse(data);
+                zeronet_migrate_data(data);
+            }
             else data = {};
-            data.sha256 = CryptoJS.SHA256(pubkey).toString() ;
-            data.pubkey = pubkey ;
-            data.search = [] ;
-            for (var i=0 ; i<user_info.length ; i++) {
+            if (!data.version) data.version = 2 ;
+            // find current user in users array
+            var max_user_seq = 0, user_seq, i ;
+            for (i=0 ; i<data.users.length ; i++) {
+                if (pubkey == data.users[i].pubkey) user_seq = data.users[i].user_seq ;
+                else if (data.users[i].user_seq > max_user_seq) max_user_seq = data.users[i].user_seq ;
+            }
+            if (!user_seq) {
+                // add current user to data.users array
+                user_seq = max_user_seq + 1 ;
+                data.users.push({
+                    user_seq: user_seq,
+                    sha256: CryptoJS.SHA256(pubkey).toString(),
+                    pubkey: pubkey
+                }) ;
+                // console.log(pgm + 'added user to data.users. data = ' + JSON.stringify(data)) ;
+            }
+            if (!data.search) data.search = [] ;
+            // remove old data for user in search array
+            for (i=data.search.length-1 ; i>=0 ; i--) {
+                if (data.search[i].user_seq == user_seq) data.search.splice(i,1);
+            }
+            // console.log(pgm + 'removed old rows for user_seq ' + user_seq + ', data = ' + JSON.stringify(data));
+            // add new data for user in search array
+            for (i=0 ; i<user_info.length ; i++) {
                 if (user_info[i].privacy != 'Search') continue ;
                 row = {
+                    user_seq: user_seq,
                     tag: user_info[i].tag,
                     value: user_info[i].value,
                     time: new Date().getTime()
                 };
                 data.search.push(row);
             } // for i
-            // console.log(pgm + 'data = ' + JSON.stringify(data)) ;
+            // console.log(pgm + 'added new rows for user_seq ' + user_seq + ', data = ' + JSON.stringify(data)) ;
             json_raw = unescape(encodeURIComponent(JSON.stringify(data, null, "\t")));
-            console.log(pgm + 'calling fileWrite: inner_path = ' + data_inner_path + ', data = ' + JSON.stringify(btoa(json_raw)));
+            // console.log(pgm + 'calling fileWrite: inner_path = ' + data_inner_path + ', data = ' + JSON.stringify(btoa(json_raw)));
             ZeroFrame.cmd("fileWrite", [data_inner_path, btoa(json_raw)], function (res) {
-                var pgm = module + '.post_user_info fileWrite callback: ' ;
-                console.log(pgm + 'res = ' + JSON.stringify(res)) ;
+                var pgm = module + '.zeronet_update_user_info fileWrite callback: ' ;
+                // console.log(pgm + 'res = ' + JSON.stringify(res)) ;
                 if (res === "ok") {
-                    console.log(pgm + 'calling sitePublish: inner_path = ' + content_inner_path) ;
+                    // console.log(pgm + 'calling sitePublish: inner_path = ' + content_inner_path) ;
                     ZeroFrame.cmd("sitePublish", {inner_path: content_inner_path}, function (res) {
-                        var pgm = module + '.post_user_info sitePublish callback: ' ;
-                        console.log(pgm + 'res = ' + JSON.stringify(res)) ;
+                        var pgm = module + '.zeronet_update_user_info sitePublish callback: ' ;
+                        // console.log(pgm + 'res = ' + JSON.stringify(res)) ;
                         if (res != "ok") ZeroFrame.cmd("wrapperNotification", ["error", "Failed to post: " + res.error]);
                     }); // sitePublish
                 } else ZeroFrame.cmd("wrapperNotification", ["error", "Failed to post: " + res.error]);
             }); // fileWrite
         }); // fileGet
-    } // post_user_info
+    } // zeronet_update_user_info
 
-    // test if siteInfo already is available in ZeroFrame
-    console.log(module + ': ZeroFrame.site_info = ' + JSON.stringify(ZeroFrame.site_info)) ;
+    // test if siteInfo already is available in ZeroFrame. No. Not ready when initializing MoneyNetworkHelper. See ZeroFrame.js
+    // console.log(module + ': ZeroFrame.site_info = ' + JSON.stringify(ZeroFrame.site_info)) ;
 
-    // auto login to ZeroNet with an anonymous money network account
-    // copy/paste from "Nanasi text board" - http://127.0.0.1:43110/16KzwuSAjFnivNimSHuRdPrYd1pNPhuHqN/
-    // short documention can be in posts on "Nanasi text board"
-    // http://127.0.0.1:43110/Talk.ZeroNetwork.bit/?Topic:6_13hcYDp4XW3GQo4LMtmPf8qUZLZcxFSmVw
-    var bitcoin_public_key = "1D2f1XV3zEDDvhDjcD9ugehNJEzv68Dhmf" ;
-    var bitcoin_private_key = "5KDc1KoCEPmxxbjvzNdQNCAguaVrFa89LdtfqCKb1PxeSdtmStC" ;
-    var bitcoin_keypair = bitcoin.ECPair.fromWIF(bitcoin_private_key);
-    // get ZeroNet site_info, check user and generate new anonymous money network cert if not logged in with that
-    var site_info ;
-    ZeroFrame.cmd("siteInfo", {}, function(res) {
-        var pgm = module + ' siteInfo callback (1): ' ;
-        // console.log(pgm + 'res = ' + JSON.stringify(res));
-        site_info = res ;
-        if (!site_info.cert_user_id || !(/@moneynetwork$/.test(site_info.cert_user_id))) {
-            // not logged in or not logged in with a money network user. Generate new anonymous money network cert and login
-            var cert;
-            cert = bitcoin.message.sign(bitcoin_keypair, (site_info.auth_address + "#web/") + site_info.auth_address.slice(0, 13)).toString("base64");
-            // console.log(pgm + 'cert = ' + JSON.stringify(cert)) ;
-            // add cert - no certSelect dialog - continue with just created money network cert
-            ZeroFrame.cmd("certAdd", ["moneynetwork", "web", site_info.auth_address.slice(0, 13), cert], function (res) {
-                var pgm = module + " certAdd callback: " ;
-                // console.log(pgm + 'res = ' + JSON.stringify(res)) ;
-                if (res.error && res.error.startsWith("You already")) {
-                    ZeroFrame.cmd("certSelect", [["zeroid.bit", "nanasi", "moneynetwork"]]);
-                } else if (res.error) {
-                    ZeroFrame.cmd("wrapperNotification", ["error", "Failed to create account: " + res.error]);
-                    return ;
-                } else {
-                    ZeroFrame.cmd("certSelect", [["zeroid.bit", "nanasi", "moneynetwork"]]);
-                }
-                // get updated site_info. should now be with not null cert_user_id
-                ZeroFrame.cmd("siteInfo", {}, function(res) {
-                    var pgm = module + ' siteInfo callback (2): ';
-                    // console.log(pgm + 'res = ' + JSON.stringify(res));
-                    site_info = res;
-                });
-            });
-        }
-    });
+    // moved to ZeroFrame
+    //// auto login to ZeroNet with an anonymous money network account
+    //// copy/paste from "Nanasi text board" - http://127.0.0.1:43110/16KzwuSAjFnivNimSHuRdPrYd1pNPhuHqN/
+    //// short documention can be in posts on "Nanasi text board"
+    //// http://127.0.0.1:43110/Talk.ZeroNetwork.bit/?Topic:6_13hcYDp4XW3GQo4LMtmPf8qUZLZcxFSmVw
+    //var bitcoin_public_key = "1D2f1XV3zEDDvhDjcD9ugehNJEzv68Dhmf" ;
+    //var bitcoin_private_key = "5KDc1KoCEPmxxbjvzNdQNCAguaVrFa89LdtfqCKb1PxeSdtmStC" ;
+    //var bitcoin_keypair = bitcoin.ECPair.fromWIF(bitcoin_private_key);
+    //// get ZeroNet site_info, check user and generate new anonymous money network cert if not logged in with that
+    //var site_info ;
+    //ZeroFrame.cmd("siteInfo", {}, function(res) {
+    //    var pgm = module + ' siteInfo callback (1): ' ;
+    //    // console.log(pgm + 'res = ' + JSON.stringify(res));
+    //    site_info = res ;
+    //    if (!site_info.cert_user_id || !(/@moneynetwork$/.test(site_info.cert_user_id))) {
+    //        // not logged in or not logged in with a money network user. Generate new anonymous money network cert and login
+    //        var cert;
+    //        cert = bitcoin.message.sign(bitcoin_keypair, (site_info.auth_address + "#web/") + site_info.auth_address.slice(0, 13)).toString("base64");
+    //        // console.log(pgm + 'cert = ' + JSON.stringify(cert)) ;
+    //        // add cert - no certSelect dialog - continue with just created money network cert
+    //        ZeroFrame.cmd("certAdd", ["moneynetwork", "web", site_info.auth_address.slice(0, 13), cert], function (res) {
+    //            var pgm = module + " certAdd callback: " ;
+    //            // console.log(pgm + 'res = ' + JSON.stringify(res)) ;
+    //            if (res.error && res.error.startsWith("You already")) {
+    //                ZeroFrame.cmd("certSelect", [["zeroid.bit", "nanasi", "moneynetwork"]]);
+    //            } else if (res.error) {
+    //                ZeroFrame.cmd("wrapperNotification", ["error", "Failed to create account: " + res.error]);
+    //                return ;
+    //            } else {
+    //                ZeroFrame.cmd("certSelect", [["zeroid.bit", "nanasi", "moneynetwork"]]);
+    //            }
+    //            // get updated site_info. should now be with not null cert_user_id
+    //            ZeroFrame.cmd("siteInfo", {}, function(res) {
+    //                var pgm = module + ' siteInfo callback (2): ';
+    //                // console.log(pgm + 'res = ' + JSON.stringify(res));
+    //                site_info = res;
+    //            });
+    //        });
+    //    }
+    //});
 
     // values in sessionStorage:
     // - data are discarded when user closes browser tab
@@ -198,7 +278,7 @@ var MoneyNetworkHelper = (function () {
         passwords: {session: false, userid: false, compress: false, encrypt: false}, // array with hashed passwords. size = number of accounts
         prvkey: {session: false, userid: true, compress: true, encrypt: true}, // for encrypted user to user communication
         pubkey: {session: false, userid: true, compress: true, encrypt: false}, // for encrypted user to user communication
-        userid: {session: true, userid: false, compress: false, encrypt: false}, // session userid (1, 2, etc) in clear text
+        userid: {session: true, userid: false, compress: false, encrypt: false}, // session userid (1, 2, etc) in clear text.
         // user data
         user_info: {session: false, userid: true, compress: true, encrypt: true} // array with user_info. See user sub page / userCtrl
     };
@@ -647,7 +727,7 @@ var MoneyNetworkHelper = (function () {
             setItem('pubkey', pubkey); // public key - sent to server and other clients
             setItem('passwords', passwords_s); // array with sha256 hashed passwords. length = number of accounts
             // send local storage updates to ZeroFrame
-            save_local_storage();
+            local_storage_save();
             return userid;
         }
         // invalid password (create_new_account=false)
@@ -669,10 +749,9 @@ var MoneyNetworkHelper = (function () {
         getItem: getItem,
         setItem: setItem,
         removeItem: removeItem,
-        local_storage_is_loading: local_storage_is_loading,
         local_storage_bind: local_storage_bind,
-        save_local_storage: save_local_storage,
-        post_user_info: post_user_info,
+        local_storage_save: local_storage_save,
+        zeronet_update_user_info: zeronet_update_user_info,
         getUserId: getUserId,
         client_login: client_login,
         client_logout: client_logout,
@@ -758,33 +837,27 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
         }
         function load_user_info () {
             var pgm = service + '.load_user_info: ';
+            // load user info from local storage
             var user_info_str, new_user_info ;
-            var user_info_str = MoneyNetworkHelper.getItem('user_info') ;
+            user_info_str = MoneyNetworkHelper.getItem('user_info') ;
             // console.log(pgm + 'user_info_str = ' + user_info_str) ;
             if (user_info_str) new_user_info = JSON.parse(user_info_str) ;
             else new_user_info = [empty_user_info_line()] ;
             user_info.splice(0,user_info.length) ;
             for (var i=0 ; i<new_user_info.length ; i++) user_info.push(new_user_info[i]) ;
+            // load user info from ZeroNet
+            // compare
+            console.log(pgm + 'todo: user info loaded from localStorage. must compare with user_info stored in data.json') ;
         }
         function get_user_info () {
             return user_info ;
         }
         function save_user_info () {
             var pgm = service + '.save_user_info: ';
-            var i, crypt ;
-            // generate public/private key pairs for any search words
-            for (i=0 ; i<user_info.length ; i++) {
-                if ((user_info[i].privacy == 'Search') && !user_info[i].prvkey) {
-                    crypt = new JSEncrypt({default_key_size: 2048});
-                    crypt.getKey();
-                    user_info[i].pubkey = crypt.getPublicKey();
-                    user_info[i].prvkey = crypt.getPrivateKey();
-                }
-            }
             MoneyNetworkHelper.setItem('user_info', JSON.stringify(user_info)) ;
             $timeout(function () {
-                MoneyNetworkHelper.save_local_storage() ;
-                MoneyNetworkHelper.post_user_info() ;
+                MoneyNetworkHelper.local_storage_save() ;
+                MoneyNetworkHelper.zeronet_update_user_info() ;
             })
         }
 
@@ -833,7 +906,7 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
             return MoneyNetworkHelper.getUserId();
         };
         self.register = 'N' ;
-        function set_register() {
+        function set_register_yn() {
             var pgm = controller + '.login_or_register: ' ;
             var passwords, no_users ;
             passwords = MoneyNetworkHelper.getItem('passwords') ;
@@ -842,8 +915,7 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
             console.log(pgm + 'passwords = ' + passwords + ', no_users = ' + no_users) ;
             self.register = (no_users == 0) ? 'Y' : 'N';
         }
-        if (MoneyNetworkHelper.local_storage_is_loading()) MoneyNetworkHelper.local_storage_bind(set_register) ;
-        else set_register() ;
+        MoneyNetworkHelper.local_storage_bind(set_register_yn) ;
 
         self.login_disabled = function () {
             if (self.register != 'N') return true;
