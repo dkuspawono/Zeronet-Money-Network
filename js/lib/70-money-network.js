@@ -68,10 +68,10 @@ var MoneyNetworkHelper = (function () {
     // write JS copy of local storage back to ZeroFrame API
     function local_storage_save() {
         var pgm = module + '.local_storage_save: ' ;
-        console.log(pgm + 'calling wrapperSetLocalStorage');
+        // console.log(pgm + 'calling wrapperSetLocalStorage');
         ZeroFrame.cmd("wrapperSetLocalStorage", [local_storage], function () {
             var pgm = module + '.local_storage_save wrapperSetLocalStorage callback: ';
-            console.log(pgm + 'OK');
+            // console.log(pgm + 'OK');
         }) ;
     } // local_storage_save
 
@@ -104,8 +104,9 @@ var MoneyNetworkHelper = (function () {
             for (i=0 ; i<json.search.length ; i++) json.search[i].user_seq = 1 ;
             json.version = 2 ;
         }
-        // data.json version 2
-        // minor problem. Should move time from search array to users array (timestamp for last update)
+        // data.json version 2. minor problems:
+        // a) should move time from search array to users array (timestamp for last update)
+        // b) should remove users without search words
         // { "search": [
         //     {"user_seq": 3, "tag": "Name", "value": "xxx", "time": 1475318394228},
         //     {"user_seq": 4, "tag": "Name", "value": "xxx", "time": 1475318987160} ],
@@ -152,15 +153,16 @@ var MoneyNetworkHelper = (function () {
         else user_info = JSON.parse(user_info) ;
         var pubkey = getItem('pubkey') ;
         // console.log(pgm + 'user_info = ' + JSON.stringify(user_info)) ;
+        // console.log(pgm + 'pubkey = ' + pubkey);
         // console.log(pgm + 'create/update json with search words') ;
         var data_inner_path = "data/users/" + ZeroFrame.site_info.auth_address + "/data.json";
         var content_inner_path = "data/users/" + ZeroFrame.site_info.auth_address + "/content.json";
 
         // update json table with public key and search words
-        console.log(pgm + 'calling fileGet: inner_path = ' + data_inner_path + ', required = false');
+        // console.log(pgm + 'calling fileGet: inner_path = ' + data_inner_path + ', required = false');
         ZeroFrame.cmd("fileGet", {inner_path: data_inner_path, required: false}, function (data) {
             var pgm = module + '.zeronet_update_user_info fileGet callback: ' ;
-            console.log(pgm + 'data = ' + JSON.stringify(data));
+            // console.log(pgm + 'data = ' + JSON.stringify(data));
             var json_raw, row;
             if (data) {
                 data = JSON.parse(data);
@@ -172,12 +174,15 @@ var MoneyNetworkHelper = (function () {
                 search: []
             };
             // find current user in users array
-            var max_user_seq = 0, user_seq, i ;
+            var max_user_seq = 0, i, user_i, user_seq ;
             for (i=0 ; i<data.users.length ; i++) {
-                if (pubkey == data.users[i].pubkey) user_seq = data.users[i].user_seq ;
+                if (pubkey == data.users[i].pubkey) {
+                    user_i = i ;
+                    user_seq = data.users[user_i].user_seq
+                }
                 else if (data.users[i].user_seq > max_user_seq) max_user_seq = data.users[i].user_seq ;
             }
-            if (!user_seq) {
+            if (!user_seq && (user_info.length > 0)) {
                 // add current user to data.users array
                 user_seq = max_user_seq + 1 ;
                 data.users.push({
@@ -187,12 +192,20 @@ var MoneyNetworkHelper = (function () {
                 }) ;
                 // console.log(pgm + 'added user to data.users. data = ' + JSON.stringify(data)) ;
             }
-            // remove old data for user in search array
+
+            // remove old search words from search array
+            var user_no_search_words = {} ;
             for (i=data.search.length-1 ; i>=0 ; i--) {
-                if (data.search[i].user_seq == user_seq) data.search.splice(i,1);
+                row = data.search[i] ;
+                if (row.user_seq == user_seq) data.search.splice(i,1);
+                else {
+                    if (!user_no_search_words.hasOwnProperty(row.user_seq)) user_no_search_words[row.user_seq] = 0 ;
+                    user_no_search_words[row.user_seq]++ ;
+                }
             }
             // console.log(pgm + 'removed old rows for user_seq ' + user_seq + ', data = ' + JSON.stringify(data));
-            // add new data for user in search array
+            // add new search workds to search array
+            user_no_search_words[user_seq] = 0 ;
             for (i=0 ; i<user_info.length ; i++) {
                 if (user_info[i].privacy != 'Search') continue ;
                 row = {
@@ -202,18 +215,29 @@ var MoneyNetworkHelper = (function () {
                     time: new Date().getTime()
                 };
                 data.search.push(row);
+                user_no_search_words[user_seq]++ ;
             } // for i
+            // console.log(pgm + 'user_no_search_words = ' + JSON.stringify(user_no_search_words));
+            // remove users without any search words
+            // can be deleted users (clear local storage) or can be users done searching for contacts
+            for (i=data.users.length-1 ; i >= 0 ; i--) {
+                user_seq = data.users[i].user_seq ;
+                if (!user_no_search_words.hasOwnProperty(user_seq) || (user_no_search_words[user_seq] == 0)) {
+                    data.users.splice(i, 1);
+                    // console.log(pgm + 'removed user ' + user_seq + ' from users array');
+                }
+            }
             // console.log(pgm + 'added new rows for user_seq ' + user_seq + ', data = ' + JSON.stringify(data)) ;
             json_raw = unescape(encodeURIComponent(JSON.stringify(data, null, "\t")));
-            console.log(pgm + 'calling fileWrite: inner_path = ' + data_inner_path + ', data = ' + JSON.stringify(btoa(json_raw)));
+            // console.log(pgm + 'calling fileWrite: inner_path = ' + data_inner_path + ', data = ' + JSON.stringify(btoa(json_raw)));
             ZeroFrame.cmd("fileWrite", [data_inner_path, btoa(json_raw)], function (res) {
                 var pgm = module + '.zeronet_update_user_info fileWrite callback: ' ;
-                console.log(pgm + 'res = ' + JSON.stringify(res)) ;
+                // console.log(pgm + 'res = ' + JSON.stringify(res)) ;
                 if (res === "ok") {
-                    console.log(pgm + 'calling sitePublish: inner_path = ' + content_inner_path) ;
+                    // console.log(pgm + 'calling sitePublish: inner_path = ' + content_inner_path) ;
                     ZeroFrame.cmd("sitePublish", {inner_path: content_inner_path}, function (res) {
                         var pgm = module + '.zeronet_update_user_info sitePublish callback: ' ;
-                        console.log(pgm + 'res = ' + JSON.stringify(res)) ;
+                        // console.log(pgm + 'res = ' + JSON.stringify(res)) ;
                         if (res != "ok") ZeroFrame.cmd("wrapperNotification", ["error", "Failed to post: " + res.error]);
                     }); // sitePublish
                 } else ZeroFrame.cmd("wrapperNotification", ["error", "Failed to post: " + res.error]);
@@ -866,9 +890,7 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
             MoneyNetworkHelper.setItem('user_info', JSON.stringify(user_info)) ;
             $timeout(function () {
                 MoneyNetworkHelper.local_storage_save() ;
-                console.log(pgm + 'before zeronet_update_user_info') ;
                 MoneyNetworkHelper.zeronet_update_user_info() ;
-                console.log(pgm + 'after zeronet_update_user_info') ;
             })
         }
 
@@ -923,7 +945,6 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
             passwords = MoneyNetworkHelper.getItem('passwords') ;
             if (!passwords) no_users = 0 ;
             else no_users = JSON.parse(passwords).length ;
-            console.log(pgm + 'passwords = ' + passwords + ', no_users = ' + no_users) ;
             self.register = (no_users == 0) ? 'Y' : 'N';
         }
         MoneyNetworkHelper.local_storage_bind(set_register_yn) ;
@@ -994,7 +1015,7 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
             var pgm = controller + '.delete_row: ' ;
             var index ;
             for (var i=0 ; i<self.user_info.length ; i++) if (self.user_info[i].$$hashKey == row.$$hashKey) index = i ;
-            console.log(pgm + 'row = ' + JSON.stringify(row)) ;
+            // console.log(pgm + 'row = ' + JSON.stringify(row)) ;
             self.user_info.splice(index, 1);
             if (self.user_info.length == 0) self.user_info.splice(index, 0, moneyNetworkService.empty_user_info_line());
         };
