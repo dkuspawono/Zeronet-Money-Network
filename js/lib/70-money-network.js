@@ -142,7 +142,6 @@ var MoneyNetworkHelper = (function () {
         var pgm = module + '. zeronet_update_user_info: ';
 
         // check if auto generate cert + login in ZeroFrame was OK
-        console.log(pgm + 'site_info = ' + JSON.stringify(ZeroFrame.site_info)) ;
         if (!ZeroFrame.site_info.cert_user_id) {
             ZeroFrame.cmd("wrapperNotification", ["error", "Ups. Something is wrong. Not logged in on ZeroNet. Cannot post search words in Zeronet. siteInfo.cert_user_id is null", 10000]);
             console.log(pgm + 'site_info = ' + JSON.stringify(ZeroFrame.site_info));
@@ -260,10 +259,10 @@ var MoneyNetworkHelper = (function () {
             "where json.directory = '" + directory + "' " +
             "and users.json_id = json.json_id " +
             "and users.sha256 = '" + sha256 + "'";
-        console.log(pgm + 'query 1 = ' + query) ;
+        // console.log(pgm + 'query 1 = ' + query) ;
         ZeroFrame.cmd("dbQuery", [query], function(res) {
             var pgm = module + '.zeronet_search dbQuery callback 1: ' ;
-            console.log(pgm + 'res = ' + JSON.stringify(res)) ;
+            // console.log(pgm + 'res = ' + JSON.stringify(res)) ;
             if (res.error) {
                 ZeroFrame.cmd("wrapperNotification", ["error", "Search for new contacts failed: " + res.error, 5000]);
                 return ;
@@ -275,43 +274,59 @@ var MoneyNetworkHelper = (function () {
             }
             var json_id = res[0].json_id ;
             var user_seq = res[0].user_seq ;
-            console.log(pgm + 'json_id = ' + json_id + ', user_seq = ' + user_seq) ;
+            // console.log(pgm + 'json_id = ' + json_id + ', user_seq = ' + user_seq) ;
             // find other clients with matching search words using sqlite like operator
+            // a) search words stored in ZeroNet. public search words. Shared on ZeroNet
+            var my_search =
+                "select search.tag, search.value from search " +
+                "where search.json_id = " + json_id + " and search.user_seq = " + user_seq ;
+            // b) search words stored in localStorage. private search words. Not shared in ZeroNet
+            var user_info = getItem('user_info') ;
+            if (user_info) user_info = JSON.parse(user_info) ;
+            else user_info = [] ;
+            var i, row ;
+            for (i=0 ; i<user_info.length ; i++) {
+                row = user_info[i] ;
+                if (row.privacy != 'Hidden') continue ;
+                row.tag = row.tag.replace(/'/g, "''") ; // escape ' in strings
+                row.value = row.value.replace(/'/g, "''") ; // escape ' in strings
+                my_search = my_search + " union all select '" + row.tag + "' as tag, '" + row.value + "' as value"
+            }
+            // console.log(pgm + 'my_search = ' + my_search) ;
             query =
                 "select" +
                 "  my_search.tag as my_tag, my_search.value as my_val," +
                 "  users.pubkey as other_pubkey, substr(json.directory,7) other_auth_address," +
                 "  search.tag as other_tag, search.value as other_value " +
-                "from" +
-                "  (select search.tag, search.value from search" +
-                "   where search.json_id = " + json_id + " and search.user_seq = " + user_seq + ") as my_search," +
-                "  search, users, json " +
+                "from (" + my_search + ") as my_search, search, users, json " +
                 "where (my_search.tag like search.tag and  my_search.value like search.value " +
                 "or search.tag like my_search.tag and search.value like my_search.value) " +
                 "and not (search.json_id = " + json_id + " and search.user_seq = " + user_seq + ") " +
                 "and users.json_id = search.json_id " +
                 "and users.user_seq = search.user_seq " +
                 "and json.json_id = search.json_id";
-            console.log(pgm + 'query 2 = ' + query) ;
+            // console.log(pgm + 'query 2 = ' + query) ;
             ZeroFrame.cmd("dbQuery", [query], function(res) {
                 var pgm = module + '.zeronet_search dbQuery callback 2: ';
-                console.log(pgm + 'res = ' + JSON.stringify(res));
+                // console.log(pgm + 'res = ' + JSON.stringify(res));
                 if (res.error) {
                     ZeroFrame.cmd("wrapperNotification", ["error", "Search for new contacts failed: " + res.error, 5000]);
                     return;
                 }
                 if (res.length == 0) {
                     // current user not in data.users array. must be an user without any search words in user_info
-                    ZeroFrame.cmd("wrapperNotification", ["info", "No new contacts were found. Please add or edit search words and try again", 3000]);
+                    ZeroFrame.cmd("wrapperNotification", ["info", "No new contacts were found. Please add/edit search/hidden words and try again", 3000]);
                     return;
                 }
-                var sha256s = [] ;
+                var unique_sha256s = [] ;
                 for (var i=0 ; i<res.length ; i++) {
-                    res[i].sha256 = CryptoJS.SHA256(res[i].pubkey).toString();
-                    if (sha256s.indexOf(res[i].sha256)==-1) sha256s.push(res[i].sha256) ;
+                    res[i].sha256 = CryptoJS.SHA256(res[i].other_pubkey).toString();
+                    if (unique_sha256s.indexOf(res[i].sha256)==-1) unique_sha256s.push(res[i].sha256) ;
                 }
-                if (sha256s.length == 1) ZeroFrame.cmd("wrapperNotification", ["info", "1 new contact was found", 3000]);
-                else ZeroFrame.cmd("wrapperNotification", ["info", sha256s.length + " new contacts was found", 3000]);
+                if (unique_sha256s.length == 1) ZeroFrame.cmd("wrapperNotification", ["info", "1 new contact was found", 3000]);
+                else ZeroFrame.cmd("wrapperNotification", ["info", unique_sha256s.length + " new contacts were found", 3000]);
+                // console.log(pgm + 'res = ' + JSON.stringify(res)) ;
+                // console.log(pgm + 'sha256s = ' + JSON.stringify(sha256s)) ;
             }) ;
         }) ;
 
@@ -1137,11 +1152,11 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
         // Verified - send to verified contact after verification through a secure canal (show more contact info)
         // Hidden - private, hidden information. Never send to server or other users.
         var privacy_titles = {
-            Search: "Search values are stored in a database and are used when searching for contacts. Shared unencrypted with all other ZeroNet clients. Regular expressions with a low number of matches are supported",
+            Search: "Search values are stored in clear text in a database and are used when searching for contacts. Shared with other ZeroNet users. SQL like wildcards are supported (% and _)",
             Public: "Info is sent encrypted to other contact after search match. Public Info is shown in contact search and contact suggestions. Your public profile",
             Unverified: "Info is sent encrypted to other unverified contact after adding contact to contact list. Additional info about you to other contact",
             Verified: "Info is sent encrypted to verified contact after contact verification through a secure canal. Your private profile",
-            Hidden: "Private, hidden information. Never send to other users"
+            Hidden: "Private, hidden information. Not stored in ZeroNet and not send to other users. But is used when searching for new contacts"
         };
         return function (privacy) {
             return privacy_titles[privacy] || 'Start typing. Select privacy level';
