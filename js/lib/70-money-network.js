@@ -142,8 +142,9 @@ var MoneyNetworkHelper = (function () {
         var pgm = module + '. zeronet_update_user_info: ';
 
         // check if auto generate cert + login in ZeroFrame was OK
+        console.log(pgm + 'site_info = ' + JSON.stringify(ZeroFrame.site_info)) ;
         if (!ZeroFrame.site_info.cert_user_id) {
-            ZeroFrame.cmd("wrapperNotification", ["error", "Ups. Something is wrong. Not logged in on ZeroNet. Cannot post search words in Zeronet. siteInfo.cert_user_id is null"]);
+            ZeroFrame.cmd("wrapperNotification", ["error", "Ups. Something is wrong. Not logged in on ZeroNet. Cannot post search words in Zeronet. siteInfo.cert_user_id is null", 10000]);
             console.log(pgm + 'site_info = ' + JSON.stringify(ZeroFrame.site_info));
             return ;
         }
@@ -238,56 +239,101 @@ var MoneyNetworkHelper = (function () {
                     ZeroFrame.cmd("sitePublish", {inner_path: content_inner_path}, function (res) {
                         var pgm = module + '.zeronet_update_user_info sitePublish callback: ' ;
                         // console.log(pgm + 'res = ' + JSON.stringify(res)) ;
-                        if (res != "ok") ZeroFrame.cmd("wrapperNotification", ["error", "Failed to post: " + res.error]);
+                        if (res != "ok") ZeroFrame.cmd("wrapperNotification", ["error", "Failed to post: " + res.error, 5000]);
                     }); // sitePublish
-                } else ZeroFrame.cmd("wrapperNotification", ["error", "Failed to post: " + res.error]);
+                } else ZeroFrame.cmd("wrapperNotification", ["error", "Failed to post: " + res.error, 5000]);
             }); // fileWrite
         }); // fileGet
     } // zeronet_update_user_info
 
-    // test if siteInfo already is available in ZeroFrame. No. Not ready when initializing MoneyNetworkHelper. See ZeroFrame.js
-    // console.log(module + ': ZeroFrame.site_info = ' + JSON.stringify(ZeroFrame.site_info)) ;
 
-    // moved to ZeroFrame
-    //// auto login to ZeroNet with an anonymous money network account
-    //// copy/paste from "Nanasi text board" - http://127.0.0.1:43110/16KzwuSAjFnivNimSHuRdPrYd1pNPhuHqN/
-    //// short documention can be in posts on "Nanasi text board"
-    //// http://127.0.0.1:43110/Talk.ZeroNetwork.bit/?Topic:6_13hcYDp4XW3GQo4LMtmPf8qUZLZcxFSmVw
-    //var bitcoin_public_key = "1D2f1XV3zEDDvhDjcD9ugehNJEzv68Dhmf" ;
-    //var bitcoin_private_key = "5KDc1KoCEPmxxbjvzNdQNCAguaVrFa89LdtfqCKb1PxeSdtmStC" ;
-    //var bitcoin_keypair = bitcoin.ECPair.fromWIF(bitcoin_private_key);
-    //// get ZeroNet site_info, check user and generate new anonymous money network cert if not logged in with that
-    //var site_info ;
-    //ZeroFrame.cmd("siteInfo", {}, function(res) {
-    //    var pgm = module + ' siteInfo callback (1): ' ;
-    //    // console.log(pgm + 'res = ' + JSON.stringify(res));
-    //    site_info = res ;
-    //    if (!site_info.cert_user_id || !(/@moneynetwork$/.test(site_info.cert_user_id))) {
-    //        // not logged in or not logged in with a money network user. Generate new anonymous money network cert and login
-    //        var cert;
-    //        cert = bitcoin.message.sign(bitcoin_keypair, (site_info.auth_address + "#web/") + site_info.auth_address.slice(0, 13)).toString("base64");
-    //        // console.log(pgm + 'cert = ' + JSON.stringify(cert)) ;
-    //        // add cert - no certSelect dialog - continue with just created money network cert
-    //        ZeroFrame.cmd("certAdd", ["moneynetwork", "web", site_info.auth_address.slice(0, 13), cert], function (res) {
-    //            var pgm = module + " certAdd callback: " ;
-    //            // console.log(pgm + 'res = ' + JSON.stringify(res)) ;
-    //            if (res.error && res.error.startsWith("You already")) {
-    //                ZeroFrame.cmd("certSelect", [["zeroid.bit", "nanasi", "moneynetwork"]]);
-    //            } else if (res.error) {
-    //                ZeroFrame.cmd("wrapperNotification", ["error", "Failed to create account: " + res.error]);
-    //                return ;
-    //            } else {
-    //                ZeroFrame.cmd("certSelect", [["zeroid.bit", "nanasi", "moneynetwork"]]);
-    //            }
-    //            // get updated site_info. should now be with not null cert_user_id
-    //            ZeroFrame.cmd("siteInfo", {}, function(res) {
-    //                var pgm = module + ' siteInfo callback (2): ';
-    //                // console.log(pgm + 'res = ' + JSON.stringify(res));
-    //                site_info = res;
-    //            });
-    //        });
-    //    }
-    //});
+    // search ZeroNet for potentiel contracts with matching search words
+    function zeronet_search () {
+        var pgm = module + '.zeronet_search: ' ;
+        // find json_id and user_seq for current user.
+        // must use search words for current user
+        // must not return search hits for current user
+        var directory = 'users/' + ZeroFrame.site_info.auth_address ;
+        var pubkey = getItem('pubkey') ;
+        var sha256 = CryptoJS.SHA256(pubkey).toString();
+        var query = "select json.json_id, users.user_seq from json, users " +
+            "where json.directory = '" + directory + "' " +
+            "and users.json_id = json.json_id " +
+            "and users.sha256 = '" + sha256 + "'";
+        console.log(pgm + 'query 1 = ' + query) ;
+        ZeroFrame.cmd("dbQuery", [query], function(res) {
+            var pgm = module + '.zeronet_search dbQuery callback 1: ' ;
+            console.log(pgm + 'res = ' + JSON.stringify(res)) ;
+            if (res.error) {
+                ZeroFrame.cmd("wrapperNotification", ["error", "Search for new contacts failed: " + res.error, 5000]);
+                return ;
+            }
+            if (res.length == 0) {
+                // current user not in data.users array. must be an user without any search words in user_info
+                ZeroFrame.cmd("wrapperNotification", ["info", "No search words in user profile. Please add some search words and try again", 3000]);
+                return ;
+            }
+            var json_id = res[0].json_id ;
+            var user_seq = res[0].user_seq ;
+            console.log(pgm + 'json_id = ' + json_id + ', user_seq = ' + user_seq) ;
+            // find other clients with matching search words using sqlite like operator
+            query =
+                "select" +
+                "  my_search.tag as my_tag, my_search.value as my_val," +
+                "  users.pubkey as other_pubkey, substr(json.directory,7) other_auth_address," +
+                "  search.tag as other_tag, search.value as other_value " +
+                "from" +
+                "  (select search.tag, search.value from search" +
+                "   where search.json_id = " + json_id + " and search.user_seq = " + user_seq + ") as my_search," +
+                "  search, users, json " +
+                "where (my_search.tag like search.tag and  my_search.value like search.value " +
+                "or search.tag like my_search.tag and search.value like my_search.value) " +
+                "and not (search.json_id = " + json_id + " and search.user_seq = " + user_seq + ") " +
+                "and users.json_id = search.json_id " +
+                "and users.user_seq = search.user_seq " +
+                "and json.json_id = search.json_id";
+            console.log(pgm + 'query 2 = ' + query) ;
+            ZeroFrame.cmd("dbQuery", [query], function(res) {
+                var pgm = module + '.zeronet_search dbQuery callback 2: ';
+                console.log(pgm + 'res = ' + JSON.stringify(res));
+                if (res.error) {
+                    ZeroFrame.cmd("wrapperNotification", ["error", "Search for new contacts failed: " + res.error, 5000]);
+                    return;
+                }
+                if (res.length == 0) {
+                    // current user not in data.users array. must be an user without any search words in user_info
+                    ZeroFrame.cmd("wrapperNotification", ["info", "No new contacts were found. Please add or edit search words and try again", 3000]);
+                    return;
+                }
+                var sha256s = [] ;
+                for (var i=0 ; i<res.length ; i++) {
+                    res[i].sha256 = CryptoJS.SHA256(res[i].pubkey).toString();
+                    if (sha256s.indexOf(res[i].sha256)==-1) sha256s.push(res[i].sha256) ;
+                }
+                if (sha256s.length == 1) ZeroFrame.cmd("wrapperNotification", ["info", "1 new contact was found", 3000]);
+                else ZeroFrame.cmd("wrapperNotification", ["info", sha256s.length + " new contacts was found", 3000]);
+            }) ;
+        }) ;
+
+
+
+
+        //select my_search.tag, my_search.value, search.json_id, search.user_seq, search.tag, search.value, users.pubkey
+        //from
+        //(select search.tag,  search.value
+        //from json,  search
+        //where json.directory = 'users/1CCiJ97XHgVeJrkbnzLgfXvYRr8QEWxnWF'
+        //and search.json_id = json.json_id
+        //and search.user_seq = 5) as my_search,
+        //    search, users
+        //where my_search.value like search.value
+        //and my_search.tag like search.tag
+        //and not (search.json_id = 9 and search.user_seq = 5)
+        //and users.json_id = search.json_id
+        //and users.user_seq = search.user_seq ;
+
+    } // zeronet_search
+
 
     // values in sessionStorage:
     // - data are discarded when user closes browser tab
@@ -785,6 +831,7 @@ var MoneyNetworkHelper = (function () {
         local_storage_bind: local_storage_bind,
         local_storage_save: local_storage_save,
         zeronet_update_user_info: zeronet_update_user_info,
+        zeronet_search: zeronet_search,
         getUserId: getUserId,
         client_login: client_login,
         client_logout: client_logout,
@@ -891,6 +938,7 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
             $timeout(function () {
                 MoneyNetworkHelper.local_storage_save() ;
                 MoneyNetworkHelper.zeronet_update_user_info() ;
+                MoneyNetworkHelper.zeronet_search() ;
             })
         }
 

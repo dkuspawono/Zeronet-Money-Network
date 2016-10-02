@@ -135,7 +135,7 @@ ZeroFrame = (function() {
             return function (res) {
                 var pgm = "checkCertUserId: certAdd callback: ";
                 // _this.log(pgm + 'res = ' + JSON.stringify(res));
-                if (res.error) { _this.cmd("wrapperNotification", ["error", "Failed to create account: " + res.error]); return ; }
+                if (res.error) { _this.cmd("wrapperNotification", ["error", "Failed to create account: " + res.error, 10000]); return ; }
                 // certAdd OK. Recheck site_info. site_info.cert_user_id should be not null now. sometime user must select newly created cert
                 _this.cmd("siteInfo", {}, function(site_info) {
                     if (site_info.cert_user_id) return ;
