@@ -80,7 +80,7 @@ var MoneyNetworkHelper = (function () {
     function zeronet_migrate_data (json) {
         var pgm = module + '.zeronet_migrate_data: ' ;
         if (!json.version) json.version = 1 ;
-        var dbschema_version = 2 ;
+        var dbschema_version = 3 ;
         if (json.version == dbschema_version) return ;
         var i ;
         // data.json version 1
@@ -105,8 +105,8 @@ var MoneyNetworkHelper = (function () {
             json.version = 2 ;
         }
         // data.json version 2. minor problems:
-        // a) should move time from search array to users array (timestamp for last update)
-        // b) should remove users without search words
+        // a) remove time from search array. use modified from content.json (keyvalues table)
+        // b) remove sha256 from users (can always be calculated from public key)
         // { "search": [
         //     {"user_seq": 3, "tag": "Name", "value": "xxx", "time": 1475318394228},
         //     {"user_seq": 4, "tag": "Name", "value": "xxx", "time": 1475318987160} ],
@@ -118,8 +118,13 @@ var MoneyNetworkHelper = (function () {
         //     {"user_seq": 4, "sha256": "0f5454007ceee575e63b52058768ff1bc0f1cb79b883d0dcf6a920426836c2c7", "pubkey": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAiANtVIyOC+MIeEhnkVfS\nn/CBDt0GWCba4U6EeUDbvf+HQGfY61e9cU+XMbI8sX7b9R5G7T+zdVqbmEIZwNEb\nDn9NIs4PVA/xqemrQUrm3qEHK8iq/+5CUwVeKeb6879FgPL8fSj1E3nNQPnmuh8N\nE+/04PraakAj9A6Z1OE5m+sfC59IDwYTKupB53kX3ZzHMmWtdYYEr08Zq9XHuYMM\nA4ykOqENGvquGjPnTB4ASKfRTLCUC+TsG5Pd+2ZswxxU3zG5v/dczj+l3GKaaxP7\nxEqA8nFYiU7LiA1MUzQlQDYj/t7ckRdjGH51GvZxlGFFaGQv3yqzs7WddZg8sqMM\nUQIDAQAB\n-----END PUBLIC KEY-----"}
         //   ]
         // }
+        // import_cols filter (http://zeronet.readthedocs.io/en/latest/site_development/dbschema_json/) does not work
+        // cannot drop the two columns and import old data
         if (json.version == 2) {
             // convert from version 2 to 3
+            for (i=0 ; i<json.users.length ; i++) delete json.users[i].sha256 ;
+            for (i=0 ; i<json.search.length ; i++) delete json.search[i].time ;
+            json.version = 3 ;
         }
         if (json.version == 3) {
             // convert from version 3 to 4
@@ -169,7 +174,7 @@ var MoneyNetworkHelper = (function () {
                 zeronet_migrate_data(data);
             }
             else data = {
-                version: 2,
+                version: 3,
                 users: [],
                 search: []
             };
@@ -187,7 +192,6 @@ var MoneyNetworkHelper = (function () {
                 user_seq = max_user_seq + 1 ;
                 data.users.push({
                     user_seq: user_seq,
-                    sha256: CryptoJS.SHA256(pubkey).toString(),
                     pubkey: pubkey
                 }) ;
                 // console.log(pgm + 'added user to data.users. data = ' + JSON.stringify(data)) ;
@@ -211,8 +215,7 @@ var MoneyNetworkHelper = (function () {
                 row = {
                     user_seq: user_seq,
                     tag: user_info[i].tag,
-                    value: user_info[i].value,
-                    time: new Date().getTime()
+                    value: user_info[i].value
                 };
                 data.search.push(row);
                 user_no_search_words[user_seq]++ ;
@@ -246,30 +249,33 @@ var MoneyNetworkHelper = (function () {
     } // zeronet_update_user_info
 
 
-    // search ZeroNet for potentiel contracts with matching search words
-    function zeronet_search () {
-        var pgm = module + '.zeronet_search: ' ;
+    // search ZeroNet for new potential contracts with matching search words
+    // add/remove new potential contracts to/from local_storage_contracts array (MoneyNetworkService and ContactCtrl)
+    function zeronet_contact_search (local_storage_contracts) {
+        var pgm = module + '.zeronet_contact_search: ' ;
         // find json_id and user_seq for current user.
         // must use search words for current user
         // must not return search hits for current user
         var directory = 'users/' + ZeroFrame.site_info.auth_address ;
         var pubkey = getItem('pubkey') ;
-        var sha256 = CryptoJS.SHA256(pubkey).toString();
         var query = "select json.json_id, users.user_seq from json, users " +
             "where json.directory = '" + directory + "' " +
             "and users.json_id = json.json_id " +
-            "and users.sha256 = '" + sha256 + "'";
+            "and users.pubkey = '" + pubkey + "'";
         // console.log(pgm + 'query 1 = ' + query) ;
         ZeroFrame.cmd("dbQuery", [query], function(res) {
-            var pgm = module + '.zeronet_search dbQuery callback 1: ' ;
+            var pgm = module + '.zeronet_contact_search dbQuery callback 1: ' ;
             // console.log(pgm + 'res = ' + JSON.stringify(res)) ;
             if (res.error) {
                 ZeroFrame.cmd("wrapperNotification", ["error", "Search for new contacts failed: " + res.error, 5000]);
+                console.log(pgm + "Search for new contacts failed: " + res.error) ;
+                console.log(pgm + 'query = ' + query) ;
                 return ;
             }
             if (res.length == 0) {
                 // current user not in data.users array. must be an user without any search words in user_info
                 ZeroFrame.cmd("wrapperNotification", ["info", "No search words in user profile. Please add some search words and try again", 3000]);
+                console.log(pgm + 'query = ' + query) ;
                 return ;
             }
             var json_id = res[0].json_id ;
@@ -295,7 +301,7 @@ var MoneyNetworkHelper = (function () {
             // console.log(pgm + 'my_search = ' + my_search) ;
             query =
                 "select" +
-                "  my_search.tag as my_tag, my_search.value as my_val," +
+                "  my_search.tag as my_tag, my_search.value as my_value," +
                 "  users.pubkey as other_pubkey, substr(json.directory,7) other_auth_address," +
                 "  search.tag as other_tag, search.value as other_value " +
                 "from (" + my_search + ") as my_search, search, users, json " +
@@ -307,10 +313,12 @@ var MoneyNetworkHelper = (function () {
                 "and json.json_id = search.json_id";
             // console.log(pgm + 'query 2 = ' + query) ;
             ZeroFrame.cmd("dbQuery", [query], function(res) {
-                var pgm = module + '.zeronet_search dbQuery callback 2: ';
+                var pgm = module + '.zeronet_contact_search dbQuery callback 2: ';
                 // console.log(pgm + 'res = ' + JSON.stringify(res));
                 if (res.error) {
                     ZeroFrame.cmd("wrapperNotification", ["error", "Search for new contacts failed: " + res.error, 5000]);
+                    console.log(pgm + "Search for new contacts failed: " + res.error) ;
+                    console.log(pgm + 'query = ' + query) ;
                     return;
                 }
                 if (res.length == 0) {
@@ -318,36 +326,125 @@ var MoneyNetworkHelper = (function () {
                     ZeroFrame.cmd("wrapperNotification", ["info", "No new contacts were found. Please add/edit search/hidden words and try again", 3000]);
                     return;
                 }
-                var unique_sha256s = [] ;
+                var unique_id, unique_ids = [], res_hash = {}, ignore, j ;
                 for (var i=0 ; i<res.length ; i++) {
-                    res[i].sha256 = CryptoJS.SHA256(res[i].other_pubkey).toString();
-                    if (unique_sha256s.indexOf(res[i].sha256)==-1) unique_sha256s.push(res[i].sha256) ;
+                    // check contacts on ignore list
+                    ignore=false ;
+                    for (j=0 ; (!ignore && (j<local_storage_contracts.length)) ; j++) {
+                        if (local_storage_contracts[j].type != 'ignore') continue ;
+                        if (res[i].auth_address == local_storage_contracts[j].auth_address) ignore=true ;
+                        if (res[i].pubkey == local_storage_contracts[j].pubkey) ignore=true ;
+                    }
+                    if (ignore) continue ;
+                    // add search match to res_hash
+                    // unique id is sha256 signatur of ZeroNet authorization and localStorage authorization
+                    // note many to many relation in the authorization and contact ids:
+                    // - a ZeroNet id can have been used on multiple devices (localStorage) when communicating with ZeroNet
+                    // - public/private localStorage key pairs can have been exported to other devices
+                    unique_id = CryptoJS.SHA256(res[i].other_auth_address + '/'  + res[i].other_pubkey).toString();
+                    res[i].other_unique_id = unique_id;
+                    if (unique_ids.indexOf(res[i].other_unique_id)==-1) unique_ids.push(res[i].other_unique_id) ;
+                    if (!res_hash.hasOwnProperty(unique_id)) res_hash[unique_id] = {
+                        type: 'new',
+                        auth_address: res[i].other_auth_address,
+                        pubkey: res[i].other_pubkey,
+                        search: []
+                    };
+                    res_hash[unique_id].search.push({
+                        my_tag: res[i].my_tag,
+                        my_value: res[i].my_value,
+                        other_tag: res[i].other_tag,
+                        other_value: res[i].other_value
+                    }) ;
                 }
-                if (unique_sha256s.length == 1) ZeroFrame.cmd("wrapperNotification", ["info", "1 new contact was found", 3000]);
-                else ZeroFrame.cmd("wrapperNotification", ["info", unique_sha256s.length + " new contacts were found", 3000]);
+                if (unique_ids.length == 1) ZeroFrame.cmd("wrapperNotification", ["info", "1 new contact", 3000]);
+                else ZeroFrame.cmd("wrapperNotification", ["info", unique_ids.length + " new contacts", 3000]);
                 // console.log(pgm + 'res = ' + JSON.stringify(res)) ;
-                // console.log(pgm + 'sha256s = ' + JSON.stringify(sha256s)) ;
-            }) ;
+                // console.log(pgm + 'res_hash = ' + JSON.stringify(res_hash)) ;
+                //res_hash = {
+                //    "4fef4f9678487b98baf77c6808f9a67651968534133b570677c9490406c4b5cc": {
+                //        "type": "new",
+                //        "auth_address": "1PcU45foygsjzGmGhWSpsa7KMRnZJ4J3tr",
+                //        "pubkey": "-----BEGIN PUBLIC KEY-----\nMIIBITANBgkqhkiG9w0BAQEFAAOCAQ4AMIIBCQKCAQB4k3F/Trrl31HKwlzhCqui\nEcPlRt1FaIGoeemPJ5rlhGedJfHS3DGkUOZOqgm0lGQHqAeRhktvnZcFAcrQDKkz\nWBA4m1oFBumBM3M/x/aqDDsHNFqZD4fPhz9DpEbpgHMODCZLNLh7Z88I7FOnGtih\nR3Q/h4DSa0NzGdHiYYdN69uLzZQydjByJcM18oaYIdw1xdYEgGBOFKa6gk2si3Je\nHraO9diGqsofLNFyAenVkwvFQzQbFZaJuTllSlDHpCNUFVBnIBWpGak5gxEzS7eH\npW9FXpu96pxV/ACS6EOad05SEr4V02lY5yFs87Edy+Qv6DASg49GP9J6pLOlLeaZ\nAgMBAAE=\n-----END PUBLIC KEY-----",
+                //        "search": [{"my_tag": "Name", "my_value": "%x%", "other_tag": "Name", "other_value": "%x%"}]
+                //    },
+                //    "12eabf2eeac1e7d21ee219a0e3b6269a1c074062877c8c9afb4d9ef4be4aa973": {
+                //        "type": "new",
+                //        "auth_address": "15xxXSPEf1JN4a5Kna5itWbDVEZfaYTUdD",
+                //        "pubkey": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvXklRnKF3OQgF3htGDnW\nvx4+t9dvJu2gFktNi/C5PI63ej3+fH8zpa2O3o5Vuwh3ma/WyAQe7NPkl2qL3jow\nHh6d/S5o6vJ6BLBRK2/9SGvsAoKmWeRhsjmGZoIrOH5QRGY82giuEbCmtQVWQZZc\nwoBQSxAJJOULF65ebnoylXmGgFNLwj0vwCZIxx/W8W4n8pOOVcmfbRuX3H1eRmgt\nyWp0rF4bByfEjHcMhwidht60cUMSmO6yDyAgrka1LLb1bF4aZZTrAuQXPe4C4WSq\nvMXCBqw8Opik7rMuFtdW/TGKg076997Oe1bHcCFjjYbJY/0/tJfRL8NlGzlYHAKH\nmwIDAQAB\n-----END PUBLIC KEY-----",
+                //        "search": [{"my_tag": "Name", "my_value": "%x%", "other_tag": "Name", "other_value": "xx"}]
+                //    },
+                //    "ac5b79accaa6da0298d56b674bfede856b8b27993a781bcc02eed41af5a3e37d": {
+                //        "type": "new",
+                //        "auth_address": "1CCiJ97XHgVeJrkbnzLgfXvYRr8QEWxnWF",
+                //        "pubkey": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqK1lnagsPFXalq9vlL5K\nqqlWBffQYUGptJH7DlLsRff+tc2W62yEQ9+ibBkerZdwrRWsG/thN0lWxeLxTuw5\nmmuF4eLsKoubH/tQJF3XrhOoUn4M7tVtGwL5aN/BG1W22l2F+Rb8Q7Tjtf3Rqdw/\nSk46CWnEZ2x1lEcj9Gl+7q7oSLocjKWURaC61zJbBmYO4Aet+/MktN0gW1VEjpPU\nr1/yEhX5EfDNwDNgOUN43aIJkv5+WcgkiGZf56ZqEauwoKsg9xB2c8v6LTv8DZlj\n+OJ/L99sVXP+QzA2yO/EQIbaCNa3Gu35GynZPoH/ig2yx0BMPu7+4/QLiIqAT4co\n+QIDAQAB\n-----END PUBLIC KEY-----",
+                //        "search": [{"my_tag": "Name", "my_value": "%x%", "other_tag": "Name", "other_value": "xxx"}]
+                //    },
+                //    "0613de44bde098145199b94a67f5f6a967c28f2490923af1001c82c611cebcab": {
+                //        "type": "new",
+                //        "auth_address": "1CCiJ97XHgVeJrkbnzLgfXvYRr8QEWxnWF",
+                //        "pubkey": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAiANtVIyOC+MIeEhnkVfS\nn/CBDt0GWCba4U6EeUDbvf+HQGfY61e9cU+XMbI8sX7b9R5G7T+zdVqbmEIZwNEb\nDn9NIs4PVA/xqemrQUrm3qEHK8iq/+5CUwVeKeb6879FgPL8fSj1E3nNQPnmuh8N\nE+/04PraakAj9A6Z1OE5m+sfC59IDwYTKupB53kX3ZzHMmWtdYYEr08Zq9XHuYMM\nA4ykOqENGvquGjPnTB4ASKfRTLCUC+TsG5Pd+2ZswxxU3zG5v/dczj+l3GKaaxP7\nxEqA8nFYiU7LiA1MUzQlQDYj/t7ckRdjGH51GvZxlGFFaGQv3yqzs7WddZg8sqMM\nUQIDAQAB\n-----END PUBLIC KEY-----",
+                //        "search": [{"my_tag": "Name", "my_value": "%x%", "other_tag": "Name", "other_value": "xxx"}]
+                //    }
+                //} ;
+
+                // insert/update/delete new contacts in local_storage_contracts (type=new)
+                var found_unique_ids = [] ;
+                for (i=local_storage_contracts.length-1 ; i>= 0 ; i--) {
+                    if (local_storage_contracts[i].type != 'new') continue ;
+                    unique_id = local_storage_contracts[i].unique_id ;
+                    if (!res_hash.hasOwnProperty(unique_id)) {
+                        // delete old new contact. Search words are no longer matching
+                        local_storage_contracts.splice(i,1) ;
+                        continue ;
+                    }
+                    // update old new contact with new search words
+                    // todo: better for angularJS to insert/update/delete in search array?
+                    found_unique_ids.push(unique_id) ;
+                    local_storage_contracts[i].search = res_hash[local_storage_contacts].search ;
+                } // i
+                for (unique_id in res_hash) {
+                    if (found_unique_ids.indexOf(unique_id) != -1) continue ;
+                    // insert new contact
+                    local_storage_contracts.push({
+                        unique_id: unique_id,
+                        type: 'new',
+                        auth_address: res_hash[unique_id].auth_address,
+                        pubkey: res_hash[unique_id].pubkey,
+                        search: res_hash[unique_id].search
+                    });
+                }
+                // console.log(pgm + 'local_storage_contacts = ' + JSON.stringify(local_storage_contracts));
+                //local_storage_contacts = [{
+                //    "unique_id": "4fef4f9678487b98baf77c6808f9a67651968534133b570677c9490406c4b5cc",
+                //    "type": "new",
+                //    "auth_address": "1PcU45foygsjzGmGhWSpsa7KMRnZJ4J3tr",
+                //    "pubkey": "-----BEGIN PUBLIC KEY-----\nMIIBITANBgkqhkiG9w0BAQEFAAOCAQ4AMIIBCQKCAQB4k3F/Trrl31HKwlzhCqui\nEcPlRt1FaIGoeemPJ5rlhGedJfHS3DGkUOZOqgm0lGQHqAeRhktvnZcFAcrQDKkz\nWBA4m1oFBumBM3M/x/aqDDsHNFqZD4fPhz9DpEbpgHMODCZLNLh7Z88I7FOnGtih\nR3Q/h4DSa0NzGdHiYYdN69uLzZQydjByJcM18oaYIdw1xdYEgGBOFKa6gk2si3Je\nHraO9diGqsofLNFyAenVkwvFQzQbFZaJuTllSlDHpCNUFVBnIBWpGak5gxEzS7eH\npW9FXpu96pxV/ACS6EOad05SEr4V02lY5yFs87Edy+Qv6DASg49GP9J6pLOlLeaZ\nAgMBAAE=\n-----END PUBLIC KEY-----",
+                //    "search": [{"my_tag": "Name", "my_value": "%x%", "other_tag": "Name", "other_value": "%x%"}]
+                //}, {
+                //    "unique_id": "12eabf2eeac1e7d21ee219a0e3b6269a1c074062877c8c9afb4d9ef4be4aa973",
+                //    "type": "new",
+                //    "auth_address": "15xxXSPEf1JN4a5Kna5itWbDVEZfaYTUdD",
+                //    "pubkey": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvXklRnKF3OQgF3htGDnW\nvx4+t9dvJu2gFktNi/C5PI63ej3+fH8zpa2O3o5Vuwh3ma/WyAQe7NPkl2qL3jow\nHh6d/S5o6vJ6BLBRK2/9SGvsAoKmWeRhsjmGZoIrOH5QRGY82giuEbCmtQVWQZZc\nwoBQSxAJJOULF65ebnoylXmGgFNLwj0vwCZIxx/W8W4n8pOOVcmfbRuX3H1eRmgt\nyWp0rF4bByfEjHcMhwidht60cUMSmO6yDyAgrka1LLb1bF4aZZTrAuQXPe4C4WSq\nvMXCBqw8Opik7rMuFtdW/TGKg076997Oe1bHcCFjjYbJY/0/tJfRL8NlGzlYHAKH\nmwIDAQAB\n-----END PUBLIC KEY-----",
+                //    "search": [{"my_tag": "Name", "my_value": "%x%", "other_tag": "Name", "other_value": "xx"}]
+                //}, {
+                //    "unique_id": "ac5b79accaa6da0298d56b674bfede856b8b27993a781bcc02eed41af5a3e37d",
+                //    "type": "new",
+                //    "auth_address": "1CCiJ97XHgVeJrkbnzLgfXvYRr8QEWxnWF",
+                //    "pubkey": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqK1lnagsPFXalq9vlL5K\nqqlWBffQYUGptJH7DlLsRff+tc2W62yEQ9+ibBkerZdwrRWsG/thN0lWxeLxTuw5\nmmuF4eLsKoubH/tQJF3XrhOoUn4M7tVtGwL5aN/BG1W22l2F+Rb8Q7Tjtf3Rqdw/\nSk46CWnEZ2x1lEcj9Gl+7q7oSLocjKWURaC61zJbBmYO4Aet+/MktN0gW1VEjpPU\nr1/yEhX5EfDNwDNgOUN43aIJkv5+WcgkiGZf56ZqEauwoKsg9xB2c8v6LTv8DZlj\n+OJ/L99sVXP+QzA2yO/EQIbaCNa3Gu35GynZPoH/ig2yx0BMPu7+4/QLiIqAT4co\n+QIDAQAB\n-----END PUBLIC KEY-----",
+                //    "search": [{"my_tag": "Name", "my_value": "%x%", "other_tag": "Name", "other_value": "xxx"}]
+                //}, {
+                //    "unique_id": "0613de44bde098145199b94a67f5f6a967c28f2490923af1001c82c611cebcab",
+                //    "type": "new",
+                //    "auth_address": "1CCiJ97XHgVeJrkbnzLgfXvYRr8QEWxnWF",
+                //    "pubkey": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAiANtVIyOC+MIeEhnkVfS\nn/CBDt0GWCba4U6EeUDbvf+HQGfY61e9cU+XMbI8sX7b9R5G7T+zdVqbmEIZwNEb\nDn9NIs4PVA/xqemrQUrm3qEHK8iq/+5CUwVeKeb6879FgPL8fSj1E3nNQPnmuh8N\nE+/04PraakAj9A6Z1OE5m+sfC59IDwYTKupB53kX3ZzHMmWtdYYEr08Zq9XHuYMM\nA4ykOqENGvquGjPnTB4ASKfRTLCUC+TsG5Pd+2ZswxxU3zG5v/dczj+l3GKaaxP7\nxEqA8nFYiU7LiA1MUzQlQDYj/t7ckRdjGH51GvZxlGFFaGQv3yqzs7WddZg8sqMM\nUQIDAQAB\n-----END PUBLIC KEY-----",
+                //    "search": [{"my_tag": "Name", "my_value": "%x%", "other_tag": "Name", "other_value": "xxx"}]
+                //}];
+
+            });
         }) ;
 
-
-
-
-        //select my_search.tag, my_search.value, search.json_id, search.user_seq, search.tag, search.value, users.pubkey
-        //from
-        //(select search.tag,  search.value
-        //from json,  search
-        //where json.directory = 'users/1CCiJ97XHgVeJrkbnzLgfXvYRr8QEWxnWF'
-        //and search.json_id = json.json_id
-        //and search.user_seq = 5) as my_search,
-        //    search, users
-        //where my_search.value like search.value
-        //and my_search.tag like search.tag
-        //and not (search.json_id = 9 and search.user_seq = 5)
-        //and users.json_id = search.json_id
-        //and users.user_seq = search.user_seq ;
-
-    } // zeronet_search
+    } // zeronet_contact_search
 
 
     // values in sessionStorage:
@@ -846,7 +943,7 @@ var MoneyNetworkHelper = (function () {
         local_storage_bind: local_storage_bind,
         local_storage_save: local_storage_save,
         zeronet_update_user_info: zeronet_update_user_info,
-        zeronet_search: zeronet_search,
+        zeronet_contact_search: zeronet_contact_search,
         getUserId: getUserId,
         client_login: client_login,
         client_logout: client_logout,
@@ -881,6 +978,7 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
             })
             .when('/contacts', {
                 templateUrl: 'contacts.html',
+                controller: 'ContactCtrl as c',
                 resolve: {check_auth: check_auth_resolve}
             })
             .when('/home', {
@@ -953,7 +1051,7 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
             $timeout(function () {
                 MoneyNetworkHelper.local_storage_save() ;
                 MoneyNetworkHelper.zeronet_update_user_info() ;
-                MoneyNetworkHelper.zeronet_search() ;
+                MoneyNetworkHelper.zeronet_contact_search(local_storage_contracts) ;
             })
         }
 
@@ -970,6 +1068,14 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
             show_privacy_title = show ;
         }
 
+        // get contacts stored in local Storage
+        var local_storage_contracts = MoneyNetworkHelper.getItem('contacts') ;
+        if (local_storage_contracts) JSON.parse(local_storage_contracts);
+        else local_storage_contracts = [] ;
+        function local_storage_get_contacts() {
+            return local_storage_contracts ;
+        }
+
         return {
             get_tags: get_tags,
             get_privacy_options: get_privacy_options,
@@ -978,7 +1084,8 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
             empty_user_info_line: empty_user_info_line,
             load_user_info: load_user_info,
             get_user_info: get_user_info,
-            save_user_info: save_user_info
+            save_user_info: save_user_info,
+            local_storage_get_contacts: local_storage_get_contacts
         };
         // end MoneyNetworkService
     }])
@@ -1055,12 +1162,29 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
     }])
 
 
+    .controller('ContactCtrl', ['MoneyNetworkService', function (moneyNetworkService) {
+        var self = this;
+        var controller = 'ContactCtrl';
+        console.log(controller + ' loaded');
+
+        // get contracts. two different types of contacts:
+        // a) contacts stored in localStorage
+        self.contacts = moneyNetworkService.local_storage_get_contacts() ; // array with contacts from localStorage
+        // b) search for new contacts using user info (search and hidden) keywords
+        self.zeronet_search_contracts = function() {
+            MoneyNetworkHelper.zeronet_contact_search(self.contacts) ;
+        }
+        self.zeronet_search_contracts() ;
+
+    }])
+
+
     .controller('UserCtrl', ['$scope', 'MoneyNetworkService', function($scope, moneyNetworkService) {
         var self = this;
         var controller = 'UserCtrl';
         console.log(controller + ' loaded');
 
-        self.user_info = moneyNetworkService.get_user_info() ; // array with tags and values
+        self.user_info = moneyNetworkService.get_user_info() ; // array with tags and values from localStorage
         self.tags = moneyNetworkService.get_tags() ; // typeahead autocomplete functionality
         self.privacy_options = moneyNetworkService.get_privacy_options() ; // select options with privacy settings for user info
         self.show_privacy_title = moneyNetworkService.get_show_privacy_title() ; // checkbox - display column with privacy descriptions?

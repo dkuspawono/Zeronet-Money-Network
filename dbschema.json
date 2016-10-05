@@ -4,7 +4,18 @@
   "version": 2,
   "maps": {
     "users/.+/data.json": {
-      "to_table": [ "search", "users" ]
+      "to_table": [
+        { "node": "search",
+          "table": "search",
+          "import_cols": ["user_seq", "tag", "value"]
+        },
+        { "node": "users",
+          "table": "users",
+          "import_cols": ["user_seq", "pubkey"]
+        } ]
+    },
+    "users/.+/content.json": {
+      "to_keyvalue": [ "cert_user_id", "modified" ]
     }
   },
   "tables": {
@@ -13,21 +24,19 @@
         ["user_seq", "INTEGER"],
         ["tag", "TEXT"],
         ["value", "TEXT"],
-        ["time", "INTEGER"],
         ["json_id", "INTEGER REFERENCES json (json_id)"]
       ],
       "indexes": ["CREATE INDEX search_i1 ON search(value, tag)"],
-      "schema_changed": 2
+      "schema_changed": 3
     },
     "users": {
       "cols": [
         ["user_seq", "INTEGER"],
-        ["sha256", "TEXT"],
         ["pubkey", "TEXT"],
         ["json_id", "INTEGER REFERENCES json (json_id)"]
       ],
-      "indexes": ["CREATE INDEX search_i2 ON users(sha256)"],
-      "schema_changed": 2
+      "indexes": ["CREATE INDEX search_i2 ON users(pubkey)"],
+      "schema_changed": 3
     }
   }
 }
