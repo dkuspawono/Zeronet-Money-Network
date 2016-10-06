@@ -1219,10 +1219,45 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
             return null ;
         };
 
+        // filter contacts. show contacts with green filter. hide contacts with red filter
+        self.filters = {
+            all: 'red',
+            new: 'green',
+            unverified: 'green',
+            verified: 'green',
+            ignore: 'red'
+        } ;
+        self.toogle_filter = function (filter) {
+            var pgm = controller + '.toogle_filter: ' ;
+            if (self.filters[filter] == 'green') self.filters[filter] = 'red' ;
+            else self.filters[filter] = 'green' ;
+            // special action for all
+            if (filter == 'all') {
+                if (self.filters['all'] == 'green') {
+                    // all: red => green. set all filters to green
+                    for (filter in self.filters) self.filters[filter] = 'green' ;
+                }
+                else {
+                    // all: green => red. set all filters to red if all filters are green
+                    if (self.filters.new == 'red') return ;
+                    if (self.filters.unverified == 'red') return ;
+                    if (self.filters.verified == 'red') return ;
+                    if (self.filters.ignore == 'red') return ;
+                    for (filter in self.filters) self.filters[filter] = 'red' ;
+                }
+            }
+            else if ((self.filters[filter] == 'red') && (self.filters.all == 'green')) self.filters.all = 'red' ;
+        };
+        self.filter_contracts = function (value, index, array) {
+            var pgm = controller + '.filter_contacts: ' ;
+            return (self.filters[value.type] == 'green');
+        };
+
+        // contact actions: add, ignore, verify, remove, chat
         self.add_contact = function (contact) {
             contact.type = 'unverified' ;
         };
-        self.ignore_new_contact = function (contact) {
+        self.ignore_contact = function (contact) {
             var pgm = controller + '.ignore_contact: ' ;
             var i, contact2 ;
             for (i=0 ; i<self.contacts.length ; i++) {
@@ -1230,9 +1265,15 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
                 if ((contact2.type == 'new')&&
                     ((contact2.cert_user_id == contact.cert_user_id) || (contact2.pubkey == contact.pubkey) )) contact2.type = 'ignore' ;
             }
-        }; // ignore_new_contact
+        }; // unignore new contact
+        self.unplonk_contact = function (contact) {
+            contact.type = 'new' ;
+        }
         self.verify_contact = function (contact) {
             ZeroFrame.cmd("wrapperNotification", ["info", "Verify contact not yet implemented", 3000]);
+        };
+        self.chat_contact = function (contact) {
+            ZeroFrame.cmd("wrapperNotification", ["info", "Chat with contact not yet implemented", 3000]);
         };
         self.remove_contact = function (contact) {
             contact.type = 'new' ;

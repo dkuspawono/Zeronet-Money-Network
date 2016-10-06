@@ -128,11 +128,11 @@
         </p>
         <p>
             Filter:
-            <input type="button" value="All"/>&nbsp;
-            <input type="button" value="New"/>&nbsp;
-            <input type="button" value="Unverified"/>&nbsp;
-            <input type="button" value="Verified"/>&nbsp;
-            <input type="button" value="Ignored"/>&nbsp;
+            <input type="button" value="All" ng-click="c.toogle_filter('all')" style="color: {{c.filters.all}}"/>&nbsp;
+            <input type="button" value="New" ng-click="c.toogle_filter('new')" style="color: {{c.filters.new}}"/>&nbsp;
+            <input type="button" value="Unverified" ng-click="c.toogle_filter('unverified')" style="color: {{c.filters.unverified}}"/>&nbsp;
+            <input type="button" value="Verified" ng-click="c.toogle_filter('verified')" style="color: {{c.filters.verified}}"/>&nbsp;
+            <input type="button" value="Ignored" ng-click="c.toogle_filter('ignore')" style="color: {{c.filters.ignore}}"/>&nbsp;
         </p>
         <table>
             <thead>
@@ -152,7 +152,7 @@
             </tr>
             </thead>
             <tbody><tr><td colspan="5">&nbsp;</td></tr></tbody>
-            <tbody ng-repeat="x in c.contacts">
+            <tbody ng-repeat="x in c.contacts|filter:c.filter_contracts">
             <tr ng-repeat="y in x.search">
                 <td ng-bind="c.get_user_info(x,y)" title="{{x.cert_user_id}}"></td>
                 <td>&nbsp;</td>
@@ -161,11 +161,13 @@
                 <td ng-bind-html="y.value"></td>
                 <td>&nbsp;</td>
                 <td ng-show="y.row == 1">
+                    <input ng-show="x.type == 'new'" type="button" value="Ignore" ng-click="c.ignore_contact(x)"/>
+                    <input ng-show="x.type == 'ignore'" type="button" value="Unplonk" ng-click="c.unplonk_contact(x)"/>
                     <input ng-show="x.type == 'new'" type="button" value="Add" ng-click="c.add_contact(x)"/>
                     <input ng-show="x.type == 'ignore'" type="button" value="Add" ng-click="c.add_contact(x)"/>
-                    <input ng-show="x.type == 'new'" type="button" value="Ignore" ng-click="c.ignore_new_contact(x)"/>
-                    <input ng-show="x.type == 'unverified'" type="button" value="Verify" ng-click="c.verify_contact(x)"/>
                     <input ng-show="x.type == 'unverified'" type="button" value="Remove" ng-click="c.remove_contact(x)"/>
+                    <input ng-show="x.type == 'unverified'" type="button" value="Verify" ng-click="c.verify_contact(x)"/>
+                    <input ng-show="x.type != 'ignore'" type="button" value="Chat" ng-click="c.chat_contact(x)"/>
                 </td>
             </tr>
             <tr><td colspan="5">&nbsp;</td></tr>
