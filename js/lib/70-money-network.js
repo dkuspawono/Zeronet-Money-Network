@@ -251,7 +251,8 @@ var MoneyNetworkHelper = (function () {
 
     // search ZeroNet for new potential contracts with matching search words
     // add/remove new potential contracts to/from local_storage_contracts array (MoneyNetworkService and ContactCtrl)
-    function zeronet_contact_search (local_storage_contracts) {
+    // fnc_when_ready - callback - execute when local_storage_contracts are updated
+    function zeronet_contact_search (local_storage_contracts, fnc_when_ready) {
         var pgm = module + '.zeronet_contact_search: ' ;
         // find json_id and user_seq for current user.
         // must use search words for current user
@@ -299,18 +300,41 @@ var MoneyNetworkHelper = (function () {
                 my_search = my_search + " union all select '" + row.tag + "' as tag, '" + row.value + "' as value"
             }
             // console.log(pgm + 'my_search = ' + my_search) ;
+
+            //// old query without cert_user_id
+            //query =
+            //    "select" +
+            //    "  my_search.tag as my_tag, my_search.value as my_value," +
+            //    "  users.pubkey as other_pubkey, substr(json.directory,7) other_auth_address," +
+            //    "  search.tag as other_tag, search.value as other_value " +
+            //    "from (" + my_search + ") as my_search, search, users, json " +
+            //    "where (my_search.tag like search.tag and  my_search.value like search.value " +
+            //    "or search.tag like my_search.tag and search.value like my_search.value) " +
+            //    "and not (search.json_id = " + json_id + " and search.user_seq = " + user_seq + ") " +
+            //    "and users.json_id = search.json_id " +
+            //    "and users.user_seq = search.user_seq " +
+            //    "and json.json_id = search.json_id";
+            // new query with cert_user_id
             query =
                 "select" +
                 "  my_search.tag as my_tag, my_search.value as my_value," +
-                "  users.pubkey as other_pubkey, substr(json.directory,7) other_auth_address," +
+                "  users.pubkey as other_pubkey, substr(data_json.directory,7) as other_auth_address," +
+                "  keyvalue1.value as other_cert_user_id, keyvalue2.value as other_user_modified," +
                 "  search.tag as other_tag, search.value as other_value " +
-                "from (" + my_search + ") as my_search, search, users, json " +
+                "from (" + my_search + ") as my_search, " +
+                "     search, users, json as data_json, json as user_json, keyvalue as keyvalue1, keyvalue as keyvalue2 " +
                 "where (my_search.tag like search.tag and  my_search.value like search.value " +
                 "or search.tag like my_search.tag and search.value like my_search.value) " +
                 "and not (search.json_id = " + json_id + " and search.user_seq = " + user_seq + ") " +
                 "and users.json_id = search.json_id " +
                 "and users.user_seq = search.user_seq " +
-                "and json.json_id = search.json_id";
+                "and data_json.json_id = search.json_id " +
+                "and user_json.directory = data_json.directory " +
+                "and user_json.file_name = 'content.json' " +
+                "and keyvalue1.json_id = user_json.json_id " +
+                "and keyvalue1.key = 'cert_user_id' " +
+                "and keyvalue2.json_id = user_json.json_id " +
+                "and keyvalue2.key = 'modified'" ;
             // console.log(pgm + 'query 2 = ' + query) ;
             ZeroFrame.cmd("dbQuery", [query], function(res) {
                 var pgm = module + '.zeronet_contact_search dbQuery callback 2: ';
@@ -347,14 +371,14 @@ var MoneyNetworkHelper = (function () {
                     if (!res_hash.hasOwnProperty(unique_id)) res_hash[unique_id] = {
                         type: 'new',
                         auth_address: res[i].other_auth_address,
+                        cert_user_id: res[i].other_cert_user_id,
                         pubkey: res[i].other_pubkey,
-                        search: []
+                        search: [{ tag: 'Last updated', value: res[i].other_user_modified, row: 1}]
                     };
                     res_hash[unique_id].search.push({
-                        my_tag: res[i].my_tag,
-                        my_value: res[i].my_value,
-                        other_tag: res[i].other_tag,
-                        other_value: res[i].other_value
+                        tag: res[i].other_tag,
+                        value: res[i].other_value,
+                        row: res_hash[unique_id].search.length+1
                     }) ;
                 }
                 if (unique_ids.length == 1) ZeroFrame.cmd("wrapperNotification", ["info", "1 new contact", 3000]);
@@ -401,7 +425,8 @@ var MoneyNetworkHelper = (function () {
                     // update old new contact with new search words
                     // todo: better for angularJS to insert/update/delete in search array?
                     found_unique_ids.push(unique_id) ;
-                    local_storage_contracts[i].search = res_hash[local_storage_contacts].search ;
+                    local_storage_contracts[i].cert_user_id = res_hash[unique_id].cert_user_id ;
+                    local_storage_contracts[i].search = res_hash[unique_id].search ;
                 } // i
                 for (unique_id in res_hash) {
                     if (found_unique_ids.indexOf(unique_id) != -1) continue ;
@@ -410,6 +435,7 @@ var MoneyNetworkHelper = (function () {
                         unique_id: unique_id,
                         type: 'new',
                         auth_address: res_hash[unique_id].auth_address,
+                        cert_user_id: res_hash[unique_id].cert_user_id,
                         pubkey: res_hash[unique_id].pubkey,
                         search: res_hash[unique_id].search
                     });
@@ -440,6 +466,9 @@ var MoneyNetworkHelper = (function () {
                 //    "pubkey": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAiANtVIyOC+MIeEhnkVfS\nn/CBDt0GWCba4U6EeUDbvf+HQGfY61e9cU+XMbI8sX7b9R5G7T+zdVqbmEIZwNEb\nDn9NIs4PVA/xqemrQUrm3qEHK8iq/+5CUwVeKeb6879FgPL8fSj1E3nNQPnmuh8N\nE+/04PraakAj9A6Z1OE5m+sfC59IDwYTKupB53kX3ZzHMmWtdYYEr08Zq9XHuYMM\nA4ykOqENGvquGjPnTB4ASKfRTLCUC+TsG5Pd+2ZswxxU3zG5v/dczj+l3GKaaxP7\nxEqA8nFYiU7LiA1MUzQlQDYj/t7ckRdjGH51GvZxlGFFaGQv3yqzs7WddZg8sqMM\nUQIDAQAB\n-----END PUBLIC KEY-----",
                 //    "search": [{"my_tag": "Name", "my_value": "%x%", "other_tag": "Name", "other_value": "xxx"}]
                 //}];
+
+                // refresh contacts in angularJS UI
+                fnc_when_ready() ;
 
             });
         }) ;
@@ -1010,7 +1039,7 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
     }])
 
 
-    .factory('MoneyNetworkService', ['$timeout', function($timeout) {
+    .factory('MoneyNetworkService', ['$timeout', '$rootScope', function($timeout, $rootScope) {
         var self = this;
         var service = 'MoneyNetworkService' ;
         console.log(service + ' loaded') ;
@@ -1051,7 +1080,7 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
             $timeout(function () {
                 MoneyNetworkHelper.local_storage_save() ;
                 MoneyNetworkHelper.zeronet_update_user_info() ;
-                MoneyNetworkHelper.zeronet_contact_search(local_storage_contracts) ;
+                MoneyNetworkHelper.zeronet_contact_search(local_storage_contracts, function () {$rootScope.$apply()}) ;
             })
         }
 
@@ -1162,19 +1191,52 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
     }])
 
 
-    .controller('ContactCtrl', ['MoneyNetworkService', function (moneyNetworkService) {
+    .controller('ContactCtrl', ['MoneyNetworkService', '$scope', function (moneyNetworkService, $scope) {
         var self = this;
         var controller = 'ContactCtrl';
         console.log(controller + ' loaded');
 
+        // todo: must add a callback function to MoneyNetworkHelper.zeronet_contact_search request
+        // ZeroNet cmds are executed asyn and angularJS are not refreshed when result are ready
+
         // get contracts. two different types of contacts:
         // a) contacts stored in localStorage
         self.contacts = moneyNetworkService.local_storage_get_contacts() ; // array with contacts from localStorage
-        // b) search for new contacts using user info (search and hidden) keywords
+        // b) search for new contacts using user info (search and hidden keywords only)
         self.zeronet_search_contracts = function() {
-            MoneyNetworkHelper.zeronet_contact_search(self.contacts) ;
-        }
+            MoneyNetworkHelper.zeronet_contact_search(self.contacts, function () {$scope.$apply()}) ;
+        };
         self.zeronet_search_contracts() ;
+
+        // first column in contacts table. return user_id or type
+        self.get_user_info = function (contact,search) {
+            if (search.row == 1) {
+                // return short cert_user_id or todo: alias
+                var i = contact.cert_user_id.indexOf('@') ;
+                return contact.cert_user_id.substr(0,i) ;
+            }
+            if (search.row == 2) return '(' + contact.type + ')' ;
+            return null ;
+        };
+
+        self.add_contact = function (contact) {
+            contact.type = 'unverified' ;
+        };
+        self.ignore_new_contact = function (contact) {
+            var pgm = controller + '.ignore_contact: ' ;
+            var i, contact2 ;
+            for (i=0 ; i<self.contacts.length ; i++) {
+                contact2 = self.contacts[i] ;
+                if ((contact2.type == 'new')&&
+                    ((contact2.cert_user_id == contact.cert_user_id) || (contact2.pubkey == contact.pubkey) )) contact2.type = 'ignore' ;
+            }
+        }; // ignore_new_contact
+        self.verify_contact = function (contact) {
+            ZeroFrame.cmd("wrapperNotification", ["info", "Verify contact not yet implemented", 3000]);
+        };
+        self.remove_contact = function (contact) {
+            contact.type = 'new' ;
+        }
 
     }])
 
@@ -1266,6 +1328,32 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
         };
     }])
 
+
+    .filter('toJSON', [function () {
+        // debug: return object as a JSON string
+        return function (object) {
+            return JSON.stringify(object) ;
+        } ;
+        // end toJSON filter
+    }])
+
+
+    .filter('unix2date', [function () {
+        // return unix timestamp as a date
+        return function (unixtimestamp) {
+            return new Date(unixtimestamp * 1000).toISOString().substr(0,10) ;
+        } ;
+        // end toJSON filter
+    }])
+
+    .filter('shortCertUserId', [function () {
+        // return part of cert_user_id before @
+        return function (cert_user_id) {
+            var i = cert_user_id.indexOf('@') ;
+            return cert_user_id.substr(0,i) ;
+        } ;
+        // end toJSON filter
+    }])
 
     .filter('privacyTitle', [function () {
         // title for user info privacy selection. mouse over help

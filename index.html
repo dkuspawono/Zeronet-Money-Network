@@ -126,7 +126,52 @@
             Use this page to manage your Money Network contracts.
             Search for new contacts, add contracts and verify contacts.
         </p>
-        contacts.html
+        <p>
+            Filter:
+            <input type="button" value="All"/>&nbsp;
+            <input type="button" value="New"/>&nbsp;
+            <input type="button" value="Unverified"/>&nbsp;
+            <input type="button" value="Verified"/>&nbsp;
+            <input type="button" value="Ignored"/>&nbsp;
+        </p>
+        <table>
+            <thead>
+            <tr>
+                <th style="text-align: center"
+                    title="User id (ZeroNet or alias) and contact status (new, added, unverfied, verified and ignore)">
+                    User
+                </th>
+                <th></th>
+                <th style="text-align: center" colspan="3" title="User information">
+                    User information
+                </th>
+                <th></th>
+                <th style="text-align: center">
+                    Action
+                </th>
+            </tr>
+            </thead>
+            <tbody><tr><td colspan="5">&nbsp;</td></tr></tbody>
+            <tbody ng-repeat="x in c.contacts">
+            <tr ng-repeat="y in x.search">
+                <td ng-bind="c.get_user_info(x,y)" title="{{x.cert_user_id}}"></td>
+                <td>&nbsp;</td>
+                <td ng-bind-html="y.tag"></td>
+                <td>:</td>
+                <td ng-bind-html="y.value"></td>
+                <td>&nbsp;</td>
+                <td ng-show="y.row == 1">
+                    <input ng-show="x.type == 'new'" type="button" value="Add" ng-click="c.add_contact(x)"/>
+                    <input ng-show="x.type == 'ignore'" type="button" value="Add" ng-click="c.add_contact(x)"/>
+                    <input ng-show="x.type == 'new'" type="button" value="Ignore" ng-click="c.ignore_new_contact(x)"/>
+                    <input ng-show="x.type == 'unverified'" type="button" value="Verify" ng-click="c.verify_contact(x)"/>
+                    <input ng-show="x.type == 'unverified'" type="button" value="Remove" ng-click="c.remove_contact(x)"/>
+                </td>
+            </tr>
+            <tr><td colspan="5">&nbsp;</td></tr>
+            </tbody>
+        </table>
+
         <!-- end contacts.html -->
     </script>
 
