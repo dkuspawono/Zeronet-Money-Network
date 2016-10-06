@@ -1211,13 +1211,22 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
         // first column in contacts table. return user_id or type
         self.get_user_info = function (contact,search) {
             if (search.row == 1) {
-                // return short cert_user_id or todo: alias
+                // return short cert_user_id or alias
+                if (contact.alias) return contact.alias ;
                 var i = contact.cert_user_id.indexOf('@') ;
                 return contact.cert_user_id.substr(0,i) ;
             }
             if (search.row == 2) return '(' + contact.type + ')' ;
             return null ;
         };
+        // open user info field for editing / adding an alias for a known contact
+        self.edit_user_info = function (contact, search) {
+            var pgm = controller + '.edit_user_info: ' ;
+            if (search.row != 1) return ;
+            contact.new_alias = self.get_user_info(contact, search) ;
+            search.edit_alias = true ;
+            console.log(pgm + 'contact = ' + JSON.stringify(contact));
+        } ;
 
         // filter contacts. show contacts with green filter. hide contacts with red filter
         self.filters = {
