@@ -500,7 +500,8 @@ var MoneyNetworkHelper = (function () {
         pubkey: {session: false, userid: true, compress: true, encrypt: false}, // for encrypted user to user communication
         userid: {session: true, userid: false, compress: false, encrypt: false}, // session userid (1, 2, etc) in clear text.
         // user data
-        user_info: {session: false, userid: true, compress: true, encrypt: true} // array with user_info. See user sub page / userCtrl
+        user_info: {session: false, userid: true, compress: true, encrypt: true}, // array with user_info. See user sub page / userCtrl
+        contacts: {session: false, userid: true, compress: true, encrypt: true} // array with contacts. See contacts sub page / contactCtrl
     };
 
     // first character in stored value is an encryption/compression storage flag
@@ -683,6 +684,7 @@ var MoneyNetworkHelper = (function () {
     function getItem(key) {
         var pgm = 'MoneyNetworkHelper.getItem: ';
         // if (key == 'password') console.log(pgm + 'caller: ' + arguments.callee.caller.toString()) ;
+        // console.log(pgm + 'debug 1: key = ' + key) ;
         var pseudo_key = key; // .match(/^gift_[0-9]+$/) ? 'gifts' : key ; // use gifts rule for gift_1, gift_1 etc
         var rule = get_local_storage_rule(pseudo_key);
         if (rule.encrypt) var password_type = (key == 'key' ? 'password' : 'key'); // key is as only variable encrypted with human password
@@ -692,12 +694,17 @@ var MoneyNetworkHelper = (function () {
             if ((typeof userid == 'undefined') || (userid == null) || (userid == '')) userid = 0;
             else userid = parseInt(userid);
             if (userid == 0) {
-                // console.log(pgm + 'Error. key ' + key + ' is stored with userid prefix but userid was not found') ;
+                console.log(pgm + 'Error. key ' + key + ' is stored with userid prefix but userid was not found (not logged in)') ;
                 return null;
             }
             key = userid + '_' + key;
         }
         // read stored value
+        // console.log(pgm + 'key = ' + key + ', rule.session = ' + rule.session + ', local_storage.loading = ' + local_storage.loading);
+        if (!rule.session && local_storage.loading) {
+            console.log(pgm + 'LocalStorage are not ready. key = ' + key) ;
+            return null ;
+        }
         var value = rule.session ? session_storage[key] : local_storage[key]; // localStorage.getItem(key);
         // if (pseudo_key == 'user_info') console.log(pgm + 'debug: local_storage = ' + JSON.stringify(local_storage) + ', value = ' + value) ;
         if ((typeof value == 'undefined') || (value == null) || (value == '')) return null; // key not found
@@ -1062,6 +1069,7 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
             // load user info from local storage
             var user_info_str, new_user_info ;
             user_info_str = MoneyNetworkHelper.getItem('user_info') ;
+            // console.log(pgm + 'user_info loaded from localStorage: ' + user_info_str) ;
             // console.log(pgm + 'user_info_str = ' + user_info_str) ;
             if (user_info_str) new_user_info = JSON.parse(user_info_str) ;
             else new_user_info = [empty_user_info_line()] ;
@@ -1098,11 +1106,22 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
         }
 
         // get contacts stored in local Storage
-        var local_storage_contracts = MoneyNetworkHelper.getItem('contacts') ;
-        if (local_storage_contracts) JSON.parse(local_storage_contracts);
-        else local_storage_contracts = [] ;
+        // todo: error. not logged in. user_id is null. contacts can not be loaded before login
+        var local_storage_contracts = [] ;
+        function local_storage_load_contacts () {
+            var pgm = service + '.load_contacts: ', contacts_str, new_contacts ;
+            contacts_str = MoneyNetworkHelper.getItem('contacts') ;
+            if (contacts_str) new_contacts = JSON.parse(contacts_str);
+            else new_contacts = [] ;
+            local_storage_contracts.splice(0, local_storage_contracts.length) ;
+            for (var i=0 ; i<new_contacts.length ; i++) local_storage_contracts.push(new_contacts[i]) ;
+            // console.log(service + ': contacts loaded from localStorage: ' + JSON.stringify(local_storage_contracts));
+        }
         function local_storage_get_contacts() {
             return local_storage_contracts ;
+        }
+        function local_storage_save_contacts() {
+            MoneyNetworkHelper.setItem('contacts', JSON.stringify(local_storage_contracts)) ;
         }
 
         return {
@@ -1114,7 +1133,9 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
             load_user_info: load_user_info,
             get_user_info: get_user_info,
             save_user_info: save_user_info,
-            local_storage_get_contacts: local_storage_get_contacts
+            local_storage_load_contacts: local_storage_load_contacts,
+            local_storage_get_contacts: local_storage_get_contacts,
+            local_storage_save_contacts: local_storage_save_contacts
         };
         // end MoneyNetworkService
     }])
@@ -1180,6 +1201,7 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
                 self.confirm_device_password = '';
                 self.register = 'N';
                 moneyNetworkService.load_user_info() ;
+                moneyNetworkService.local_storage_load_contacts() ;
                 var user_info = moneyNetworkService.get_user_info() ;
                 var empty_user_info_str = JSON.stringify([moneyNetworkService.empty_user_info_line()]) ;
                 if (JSON.stringify(user_info) == empty_user_info_str) $location.path('/user');
@@ -1209,9 +1231,9 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
         self.get_user_info = function (contact,search) {
             if (search.row == 1) {
                 // return short cert_user_id or alias
-                if (contact.alias) return contact.alias ;
+                if (contact.alias) return '<b>' + contact.alias + '</b>';
                 var i = contact.cert_user_id.indexOf('@') ;
-                return contact.cert_user_id.substr(0,i) ;
+                return '<b>' + contact.cert_user_id.substr(0,i) + '</b>';
             }
             if (search.row == 2) return '(' + contact.type + ')' ;
             return null ;
@@ -1221,9 +1243,13 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
         self.edit_alias_title = "Edit alias. Press ENTER to save. Press ESC to cancel" ;
         var edit_alias_notifications = 1 ;
         self.edit_user_info = function (contact, search) {
-            var pgm = controller + '.edit_user_info: ' ;
+            var pgm = controller + '.edit_user_info: ', i ;
             if (search.row != 1) return ;
-            contact.new_alias = self.get_user_info(contact, search) ;
+            if (contact.alias) contact.new_alias = contact.alias ;
+            else {
+                i = contact.cert_user_id.indexOf('@') ;
+                contact.new_alias = contact.cert_user_id.substr(0,i) ;
+            }
             search.edit_alias = true ;
             if (edit_alias_notifications > 0) {
                 ZeroFrame.cmd("wrapperNotification", ["info", self.edit_alias_title, 5000]);
@@ -1242,9 +1268,13 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
         } ;
         self.save_user_info = function (contact, search) {
             var pgm = controller + '.save_user_info: ';
+            // update angular UI
             contact.alias = contact.new_alias ;
             delete search.edit_alias ;
             $scope.$apply() ;
+            // save contacts in localStorage
+            moneyNetworkService.local_storage_save_contacts() ;
+            MoneyNetworkHelper.local_storage_save() ;
         };
 
         // filter contacts. show contacts with green filter. hide contacts with red filter
