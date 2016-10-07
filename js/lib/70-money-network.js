@@ -1191,13 +1191,10 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
     }])
 
 
-    .controller('ContactCtrl', ['MoneyNetworkService', '$scope', function (moneyNetworkService, $scope) {
+    .controller('ContactCtrl', ['MoneyNetworkService', '$scope', '$timeout', function (moneyNetworkService, $scope, $timeout) {
         var self = this;
         var controller = 'ContactCtrl';
         console.log(controller + ' loaded');
-
-        // todo: must add a callback function to MoneyNetworkHelper.zeronet_contact_search request
-        // ZeroNet cmds are executed asyn and angularJS are not refreshed when result are ready
 
         // get contracts. two different types of contacts:
         // a) contacts stored in localStorage
@@ -1219,14 +1216,36 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
             if (search.row == 2) return '(' + contact.type + ')' ;
             return null ;
         };
-        // open user info field for editing / adding an alias for a known contact
+
+        // edit alias functions
+        self.edit_alias_title = "Edit alias. Press ENTER to save. Press ESC to cancel" ;
+        var edit_alias_notifications = 1 ;
         self.edit_user_info = function (contact, search) {
             var pgm = controller + '.edit_user_info: ' ;
             if (search.row != 1) return ;
             contact.new_alias = self.get_user_info(contact, search) ;
             search.edit_alias = true ;
-            console.log(pgm + 'contact = ' + JSON.stringify(contact));
+            if (edit_alias_notifications > 0) {
+                ZeroFrame.cmd("wrapperNotification", ["info", self.edit_alias_title, 5000]);
+                edit_alias_notifications-- ;
+            }
+            // set focus - in a timeout - wait for angularJS
+            var id = contact.$$hashKey + ':alias' ;
+            var set_focus = function () { document.getElementById(id).focus() } ;
+            $timeout(set_focus) ;
         } ;
+        self.cancel_edit_alias = function (contact, search) {
+            var pgm = controller + '.cancel_edit_alias: ' ;
+            delete contact.new_alias ;
+            delete search.edit_alias ;
+            $scope.$apply() ;
+        } ;
+        self.save_user_info = function (contact, search) {
+            var pgm = controller + '.save_user_info: ';
+            contact.alias = contact.new_alias ;
+            delete search.edit_alias ;
+            $scope.$apply() ;
+        };
 
         // filter contacts. show contacts with green filter. hide contacts with red filter
         self.filters = {
@@ -1365,8 +1384,29 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
             restrict: 'A',
             link: function(scope, element, attrs) {
                 element.bind('keydown keypress', function(event) {
+                    // console.log('onKeyEnter: event.which = ' + event.which) ;
                     if ((event.which === 13) || ((event.which === 9) && scope.$last)) {
                         var attrValue = $parse(attrs.onKeyEnter);
+                        (typeof attrValue === 'function') ? attrValue(scope) : angular.noop();
+                        event.preventDefault();
+                    }
+                });
+                scope.$on('$destroy', function() {
+                    element.unbind('keydown keypress')
+                })
+            }
+        };
+    }])
+
+
+    .directive('onKeyEscape', ['$parse', function($parse) {
+        return {
+            restrict: 'A',
+            link: function(scope, element, attrs) {
+                element.bind('keydown keypress', function(event) {
+                    // console.log('onKeyEscape: event.which = ' + event.which) ;
+                    if (event.which === 27) {
+                        var attrValue = $parse(attrs.onKeyEscape);
                         (typeof attrValue === 'function') ? attrValue(scope) : angular.noop();
                         event.preventDefault();
                     }

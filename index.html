@@ -154,8 +154,11 @@
             <tbody><tr><td colspan="5">&nbsp;</td></tr></tbody>
             <tbody ng-repeat="x in c.contacts|filter:c.filter_contracts">
             <tr ng-repeat="y in x.search">
-                <td ng-hide="y.edit_alias" ng-bind-html="c.get_user_info(x,y)" ng-click="c.edit_user_info(x,y)" title="{{x.cert_user_id}}"></td>
-                <td ng-show="y.edit_alias" title="Edit alias and press ENTER"><input type="text" ng-model="x.new_alias" style="width: 110px"></td>
+                <td ng-hide="y.edit_alias" ng-bind-html="c.get_user_info(x,y)" ng-click="c.edit_user_info(x,y)" title="{{x.cert_user_id}}. Click to edit"></td>
+                <td ng-show="y.edit_alias" title="{{c.edit_alias_title}}">
+                    <input type="text" ng-model="x.new_alias" style="width: 110px" id="{{x.$$hashKey}}:alias"
+                           on-key-enter="c.save_user_info(x,y)" on-key-escape="c.cancel_edit_alias(x,y)">
+                </td>
                 <td>&nbsp;</td>
                 <td ng-bind-html="y.tag"></td>
                 <td>:</td>
