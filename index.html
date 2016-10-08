@@ -138,7 +138,7 @@
             <thead>
             <tr>
                 <th style="text-align: center"
-                    title="User id (ZeroNet or alias) and contact status (new, added, unverfied, verified and ignore)">
+                    title="User id (ZeroNet or alias) and contact status (new, added, unverfied, verified and ignore). Click to User id to edit">
                     User
                 </th>
                 <th></th>
@@ -154,7 +154,9 @@
             <tbody><tr><td colspan="5">&nbsp;</td></tr></tbody>
             <tbody ng-repeat="x in c.contacts|filter:c.filter_contracts">
             <tr ng-repeat="y in x.search">
-                <td ng-hide="y.edit_alias" ng-bind-html="c.get_user_info(x,y)" ng-click="c.edit_user_info(x,y)" title="{{x.cert_user_id}}. Click to edit"></td>
+                <td ng-hide="y.edit_alias" ng-bind-html="c.get_user_info(x,y)" ng-click="c.edit_user_info(x,y)"
+                    title="{{x.cert_user_id}}. Click to edit">
+                </td>
                 <td ng-show="y.edit_alias" title="{{c.edit_alias_title}}">
                     <input type="text" ng-model="x.new_alias" style="width: 110px" id="{{x.$$hashKey}}:alias"
                            on-key-enter="c.save_user_info(x,y)" on-key-escape="c.cancel_edit_alias(x,y)">

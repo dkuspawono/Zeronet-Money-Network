@@ -5,14 +5,9 @@
   "maps": {
     "users/.+/data.json": {
       "to_table": [
-        { "node": "search",
-          "table": "search",
-          "import_cols": ["user_seq", "tag", "value"]
-        },
-        { "node": "users",
-          "table": "users",
-          "import_cols": ["user_seq", "pubkey"]
-        } ]
+        { "node": "search", "table": "search" },
+        { "node": "users",  "table": "users" },
+        { "node": "msg",    "table": "messages" } ]
     },
     "users/.+/content.json": {
       "to_keyvalue": [ "cert_user_id", "modified" ]
@@ -27,7 +22,7 @@
         ["json_id", "INTEGER REFERENCES json (json_id)"]
       ],
       "indexes": ["CREATE INDEX search_i1 ON search(value, tag)"],
-      "schema_changed": 3
+      "schema_changed": 4
     },
     "users": {
       "cols": [
@@ -35,8 +30,23 @@
         ["pubkey", "TEXT"],
         ["json_id", "INTEGER REFERENCES json (json_id)"]
       ],
-      "indexes": ["CREATE INDEX search_i2 ON users(pubkey)"],
-      "schema_changed": 3
+      "indexes": ["CREATE INDEX users_i1 ON users(pubkey)"],
+      "schema_changed": 4
+    },
+    "messages": {
+      "cols": [
+        ["user_seq", "INTEGER"],
+        ["receiver_sha256", "TEXT"],
+        ["key", "TEXT"],
+        ["message", "TEXT"],
+        ["message_sha256", "TEXT"],
+        ["timestamp", "INTEGER"],
+        ["json_id", "INTEGER REFERENCES json (json_id)"]
+      ],
+      "indexes": [
+        "CREATE INDEX messages_i1 ON messages(user_seq, message_sha256)",
+        "CREATE INDEX messages_i2 ON messages(receiver_sha256)"],
+      "schema_changed": 4
     }
   }
 }
