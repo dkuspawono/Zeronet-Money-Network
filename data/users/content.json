@@ -3,9 +3,9 @@
  "files": {},
  "ignore": ".*",
  "inner_path": "data/users/content.json",
- "modified": 1475150442.907227,
+ "modified": 1475940071.761126,
  "signs": {
-  "1JeHa67QEvrrFpsSow82fLypw8LoRcmCXk": "HOqE4QZH5cgEs/WFw8I4bAfrxPQw6R6kSRS+vAdGAUDznc5uAdwdYg7hgaB+U7a8tmZYi+jQZb7xbYwCxxWzmg8="
+  "1JeHa67QEvrrFpsSow82fLypw8LoRcmCXk": "Gzfi1cKnHBK+oJ9m6Y8VXsaxpH67EU3YdUO02a66YOBe9my3hDtCGffe6kRgocKADYhq2J0T3vZRtCz7T5kh7jU="
  },
  "user_contents": {
   "cert_signers": {
@@ -16,7 +16,7 @@
   "permission_rules": {
    ".*": {
     "files_allowed": "data.json",
-    "max_size": 20000
+    "max_size": 100000
    }
   },
   "permissions": {}
