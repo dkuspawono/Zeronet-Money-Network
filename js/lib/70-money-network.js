@@ -265,7 +265,9 @@ var MoneyNetworkHelper = (function () {
                         auth_address: res_hash[unique_id].auth_address,
                         cert_user_id: res_hash[unique_id].cert_user_id,
                         pubkey: res_hash[unique_id].pubkey,
-                        search: res_hash[unique_id].search
+                        search: res_hash[unique_id].search,
+                        inbox: [],
+                        outbox: []
                     });
                 }
                 // console.log(pgm + 'local_storage_contacts = ' + JSON.stringify(local_storage_contracts));
@@ -1029,8 +1031,9 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
                         user_seq: user_seq,
                         pubkey: pubkey
                     }) ;
-                    // console.log(pgm + 'added user to data.users. data = ' + JSON.stringify(data)) ;
+                    console.log(pgm + 'added user to data.users. data = ' + JSON.stringify(data)) ;
                 }
+                console.log(pgm + 'pubkey = ' + pubkey + ', user_seq = ' + user_seq);
 
                 // remove old search words from search array
                 var user_no_search_words = {} ;
@@ -1083,62 +1086,105 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
                 //        "send_at":1475909700008
                 //    }]
 
+                // todo: fix problem with false/0 keys in msg array / messages table (cannot be decrypted). See also "insert new message" below
+                var j, k, contact ;
+                for (i=data.msg.length-1 ; i>=0 ; i--) {
+                    if (!data.msg[i].key) {
+                        console.log(pgm + 'deleting message with invalid key. data.msg[' + i + '] = ' + JSON.stringify(data.msg[i]));
+                        // cleanup invalid zeronet_msg_id references in localStorage
+                        for (j=0 ; j<local_storage_contracts.length ; j++) {
+                            contact = local_storage_contracts[j] ;
+                            for (k=0 ; k<contact.outbox.length ; k++) {
+                                if (contact.outbox[k].zeronet_msg_id == data.msg[i].message_sha256) {
+                                    delete contact.outbox[k].zeronet_msg_id;
+                                    local_storage_updated = true;
+                                }
+                            } // for k (outbox)
+                        } // for j (contacts)
+                        data.msg.splice(i,1);
+                    } // if
+                } // for i (data.msg)
+
                 // insert & delete messages
-                var password, key, message, j, message_deleted, error;
-                for (i=local_storage_messages.length-1 ; i>= 0 ; i--) {
-                    if (!local_storage_messages[i].zeronet_msg_id && !local_storage_messages[i].deleted_at) {
-                        // encrypt and insert new message
-                        var encrypt = new JSEncrypt();
-                        encrypt.setPublicKey(local_storage_messages[i].pubkey);
-                        delete local_storage_messages[i].pubkey ;
-                        // random sender_sha256 address? - sha256(pubkey) should only be used for first message (contact added)
-                        if (local_storage_messages[i].sender_sha256) {
-                            local_storage_messages[i].sender_sha256 = CryptoJS.SHA256(generate_random_password()).toString();
-                            local_storage_messages[i].message.sender_sha256 = local_storage_messages[i].sender_sha256 ;
-                        }
-                        else delete local_storage_messages[i].sender_sha256 ;
-                        // rsa encrypted key, symmetric encrypted message
-                        password = generate_random_password();
-                        key = encrypt.encrypt(password);
-                        message = MoneyNetworkHelper.encrypt(JSON.stringify(local_storage_messages[i].message), password);
-                        delete local_storage_messages[i].message.sender_sha256 ;
-                        local_storage_messages[i].zeronet_msg_id = CryptoJS.SHA256(message).toString();
-                        local_storage_messages[i].send_at = new Date().getTime() ;
-                        data.msg.push({
-                            user_seq: user_seq,
-                            receiver_sha256: local_storage_messages[i].receiver_sha256,
-                            key: key,
-                            message: message,
-                            message_sha256: local_storage_messages[i].zeronet_msg_id,
-                            timestamp: local_storage_messages[i].send_at
-                        });
-                        local_storage_updated = true ;
-                        continue ;
-                    }
-                    if (local_storage_messages[i].zeronet_msg_id && local_storage_messages[i].deleted_at) {
-                        // delete message requested by client (active delete)
-                        // console.log(pgm + 'debug: delete message requested by client (active delete)') ;
-                        // console.log(pgm + 'local_storage_messages[' + i + '] = ' + JSON.stringify(local_storage_messages[i])) ;
-                        message_deleted = false ;
-                        for (j=data.msg.length-1 ; j>=0 ; j--) {
-                            // console.log(pgm + 'debug: data.msg[' + j + '] = ' + JSON.stringify(data.msg[j])) ;
-                            if ((data.msg[j].user_seq == user_seq) && (data.msg[j].message_sha256 == local_storage_messages[i].zeronet_msg_id)) {
-                                message_deleted = true ;
-                                data.msg.splice(j,1) ;
+                var password, key, message, message_deleted, error, receiver_sha256 ;
+                for (i=0 ; i<local_storage_contracts.length ; i++) {
+                    contact = local_storage_contracts[i] ;
+                    for (j=contact.outbox.length-1 ; j >= 0 ; j--) {
+                        if (!contact.outbox[j].send_at && !contact.outbox[j].deleted_at) {
+                            // not yet sent and not deleted - encrypt and insert new message in data.msg array (data.json)
+                            var encrypt = new JSEncrypt();
+                            encrypt.setPublicKey(contact.pubkey);
+                           delete contact.outbox[j].pubkey ;
+                            // random sender_sha256 address? - sha256(pubkey) should only be used for first message (contact added)
+                            if (contact.outbox[j].sender_sha256) {
+                                contact.outbox[j].sender_sha256 = CryptoJS.SHA256(generate_random_password()).toString();
+                                contact.outbox[j].message.sender_sha256 = contact.outbox[j].sender_sha256 ;
                             }
-                        }
-                        if (!message_deleted) {
-                            error = "Could not delete message from Zeronet. Maybe posted in ZeroNet from an other ZeroNet id" ;
-                            console.log(pgm + 'error = ' + error) ;
-                            console.log(pgm + 'user_seq = ' + user_seq) ;
-                            console.log(pgm + 'zeronet_msg_id = ' + local_storage_messages[i].zeronet_msg_id) ;
-                            ZeroFrame.cmd("wrapperNotification", ["error", error, 5000]);
-                            delete local_storage_messages[i].zeronet_msg_id ;
-                        }
-                        local_storage_messages.splice(i,1);
-                        local_storage_updated = true ;
-                    }
-                } // for i
+                            else delete contact.outbox[j].sender_sha256 ;
+                            // rsa encrypted key, symmetric encrypted message
+                            password = generate_random_password();
+
+                            // todo: debugging - fix problem with false/ "0" keys in msg array / messages table. See data cleanup above
+                            key = encrypt.encrypt(password);
+                            if (!key) throw pgm + 'System error. Encryption error. key = ' + key + ', password = ' + password ;
+
+                            message = MoneyNetworkHelper.encrypt(JSON.stringify(contact.outbox[j].message), password);
+                            delete contact.outbox[j].message.sender_sha256 ;
+                            contact.outbox[j].zeronet_msg_id = CryptoJS.SHA256(message).toString();
+                            contact.outbox[j].send_at = new Date().getTime() ;
+                            receiver_sha256 = contact.outbox[j].receiver_sha256 ;
+                            delete contact.outbox[j].receiver_sha256 ; // no need to known after message has been sent
+                            console.log(pgm + 'new local_storage_messages[' + i + '] = ' + JSON.stringify(contact.outbox[j]));
+                            //local_storage_messages[3] = {
+                            //    "local_msg_seq": 15,
+                            //    "contact_id": "af55bca34e35924d16767fbb2caa8d610812d68ccef95f58eea8be08d2fa1c6f",
+                            //    "message": {"msg": "contact added", "search": []},
+                            //    "sender_sha256": "252b735ca19123f4ace146e706ef06dca3a13c8414e7ffe61dc393d719c036f4",
+                            //    "zeronet_msg_id": "b6baac49e244324ce1bfba7cb9d3601c0fcbcd9a816a3dfd31c5cce1087f70b8",
+                            //    "send_at": 1476005958406
+                            //};
+                            console.log(pgm + 'old data.msg.length = ' + data.msg.length) ;
+                            data.msg.push({
+                                user_seq: user_seq,
+                                receiver_sha256: receiver_sha256,
+                                key: key,
+                                message: message,
+                                message_sha256: contact.outbox[j].zeronet_msg_id,
+                                timestamp: contact.outbox[j].send_at
+                            });
+                            console.log(pgm + 'new data.msg row = ' + JSON.stringify(data.msg[data.msg.length-1]));
+                            console.log(pgm + 'new data.msg.length = ' + data.msg.length) ;
+                            local_storage_updated = true ;
+                            continue ;
+                        } // if
+                        if (contact.outbox[j].zeronet_msg_id && contact.outbox[j].deleted_at) {
+                            // delete message requested by client (active delete)
+                            // console.log(pgm + 'debug: delete message requested by client (active delete)') ;
+                            // console.log(pgm + 'local_storage_messages[' + i + '] = ' + JSON.stringify(contact.outbox[j])) ;
+                            message_deleted = false ;
+                            console.log(pgm + 'old data.msg.length = ' + data.msg.length) ;
+                            for (k=data.msg.length-1 ; k>=0 ; k--) {
+                                // console.log(pgm + 'debug: data.msg[' + k + '] = ' + JSON.stringify(data.msg[k])) ;
+                                if ((data.msg[k].user_seq == user_seq) && (data.msg[k].message_sha256 == contact.outbox[j].zeronet_msg_id)) {
+                                    message_deleted = true ;
+                                    data.msg.splice(k,1) ;
+                                }
+                            }
+                            console.log(pgm + 'new data.msg.length = ' + data.msg.length) ;
+                            if (!message_deleted) {
+                                error = "Could not delete message from Zeronet. Maybe posted in ZeroNet from an other ZeroNet id" ;
+                                console.log(pgm + 'error = ' + error) ;
+                                console.log(pgm + 'user_seq = ' + user_seq) ;
+                                console.log(pgm + 'zeronet_msg_id = ' + contact.outbox[j].zeronet_msg_id) ;
+                                console.log(pgm + 'data.msg = ' + JSON.stringify(data.msg));
+                                ZeroFrame.cmd("wrapperNotification", ["error", error, 5000]);
+                                delete contact.outbox[j].zeronet_msg_id ;
+                            }
+                            contact.outbox.splice(j,1);
+                            local_storage_updated = true ;
+                        } // if
+                    } // for j (contact.outbox)
+                } // for i (contacts)
 
                 // console.log(pgm + 'localStorage.messages (2) = ' + JSON.stringify(local_storage_messages));
                 // console.log(pgm + 'ZeroNet data.msg (2) = ' + JSON.stringify(data.msg));
@@ -1149,13 +1195,18 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
                 var one_week_ago = now - 1000*60*60*24*7 ;
                 for (i=data.msg.length-1 ; i>=0 ; i--) {
                     if (data.msg[i].timestamp > one_week_ago) continue ;
-                    for (j=0 ; j<local_storage_messages.length ; j++) {
-                        if (local_storage_messages[j].zeronet_msg_id == data.msg[i].message_sha256) {
-                            local_storage_messages[j].deleted_at = now ;
-                            delete local_storage_messages[j].zeronet_msg_id ;
-                            local_storage_updated = true ;
-                        }
-                    }
+                    // clear reference from localStorage to data.json on ZeroNet
+                    for (j=0 ; j<local_storage_contracts.length ; j++) {
+                        contact = local_storage_contracts[j] ;
+                        for (k=0 ; k<contact.outbox.length ; k++) {
+                            if (contact.outbox[k].zeronet_msg_id == data.msg[i].message_sha256) {
+                                contact.outbox[k].deleted_at = now ;
+                                delete contact.outbox[k].zeronet_msg_id ;
+                                local_storage_updated = true ;
+                            } // if
+                            
+                        } // for k (contact.outbox)
+                    } // for j (contacts)
                     data.msg.splice(i,1) ;
                 } // for i
 
@@ -1163,23 +1214,24 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
                 // console.log(pgm + 'ZeroNet data.msg (3) = ' + JSON.stringify(data.msg));
 
                 if (local_storage_updated) {
-                    MoneyNetworkHelper.setItem('messages', JSON.stringify(local_storage_messages)) ;
+                    console.log(pgm + 'contacts updated. Save contacts in local storage');
+                    MoneyNetworkHelper.setItem('contacts', JSON.stringify(local_storage_contracts)) ;
                     $timeout(function () {
                         MoneyNetworkHelper.local_storage_save() ;
                     })
                 }
 
-                // console.log(pgm + 'added new rows for user_seq ' + user_seq + ', data = ' + JSON.stringify(data)) ;
+                console.log(pgm + 'added new rows for user_seq ' + user_seq + ', data = ' + JSON.stringify(data)) ;
                 json_raw = unescape(encodeURIComponent(JSON.stringify(data, null, "\t")));
-                // console.log(pgm + 'calling fileWrite: inner_path = ' + data_inner_path + ', data = ' + JSON.stringify(btoa(json_raw)));
+                console.log(pgm + 'calling fileWrite: inner_path = ' + data_inner_path + ', data = ' + JSON.stringify(btoa(json_raw)));
                 ZeroFrame.cmd("fileWrite", [data_inner_path, btoa(json_raw)], function (res) {
                     var pgm = service + '.zeronet_update_user_info fileWrite callback: ' ;
-                    // console.log(pgm + 'res = ' + JSON.stringify(res)) ;
+                    console.log(pgm + 'res = ' + JSON.stringify(res)) ;
                     if (res === "ok") {
-                        // console.log(pgm + 'calling sitePublish: inner_path = ' + content_inner_path) ;
+                        console.log(pgm + 'calling sitePublish: inner_path = ' + content_inner_path) ;
                         ZeroFrame.cmd("sitePublish", {inner_path: content_inner_path}, function (res) {
                             var pgm = service + '.zeronet_update_user_info sitePublish callback: ' ;
-                            // console.log(pgm + 'res = ' + JSON.stringify(res)) ;
+                            console.log(pgm + 'res = ' + JSON.stringify(res)) ;
                             if (res != "ok") ZeroFrame.cmd("wrapperNotification", ["error", "Failed to post: " + res.error, 5000]);
                         }); // sitePublish
                     } else ZeroFrame.cmd("wrapperNotification", ["error", "Failed to post: " + res.error, 5000]);
@@ -1236,15 +1288,21 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
             show_privacy_title = show ;
         }
 
-        // get contacts stored in localStorage
+
         var local_storage_contracts = [] ;
+        // get contacts stored in localStorage
         function local_storage_load_contacts () {
-            var pgm = service + '.local_storage_load_contacts: ', contacts_str, new_contacts ;
+            var pgm = service + '.local_storage_load_contacts: ', contacts_str, new_contacts, new_contact ;
             contacts_str = MoneyNetworkHelper.getItem('contacts') ;
             if (contacts_str) new_contacts = JSON.parse(contacts_str);
             else new_contacts = [] ;
             local_storage_contracts.splice(0, local_storage_contracts.length) ;
-            for (var i=0 ; i<new_contacts.length ; i++) local_storage_contracts.push(new_contacts[i]) ;
+            for (var i=0 ; i<new_contacts.length ; i++) {
+                new_contact = new_contacts[i] ;
+                if (!new_contact.inbox)  new_contact.inbox = [] ;
+                if (!new_contact.outbox) new_contact.outbox = [] ;
+                local_storage_contracts.push(new_contact) ;
+            }
             // console.log(service + ': contacts loaded from localStorage: ' + JSON.stringify(local_storage_contracts));
         }
         function local_storage_get_contacts() {
@@ -1252,83 +1310,115 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
         }
         function local_storage_save_contacts() {
             MoneyNetworkHelper.setItem('contacts', JSON.stringify(local_storage_contracts)) ;
-        }
-
-        // load, get and save messages stored in localStorage
-        var local_storage_messages = [] ;
-        function local_storage_load_messages () {
-            var pgm = service + '.local_storage_load_messages: ', messages_str, new_messages ;
-            messages_str = MoneyNetworkHelper.getItem('messages') ;
-            if (messages_str) new_messages = JSON.parse(messages_str);
-            else new_messages = [] ;
-            local_storage_messages.splice(0, local_storage_messages.length) ;
-            for (var i=0 ; i<new_messages.length ; i++) local_storage_messages.push(new_messages[i]) ;
-            // console.log(service + ': messages loaded from localStorage: ' + JSON.stringify(local_storage_messages));
-        }
-        function local_storage_get_messages() {
-            return local_storage_messages ;
-        }
-        function local_storage_save_messages() {
-            var pgm = service + '.local_storage_save_messages: ';
-            // console.log(pgm + '"big" messages save. localStorage and ZeroNet') ;
-            MoneyNetworkHelper.setItem('messages', JSON.stringify(local_storage_messages)) ;
             $timeout(function () {
                 MoneyNetworkHelper.local_storage_save() ;
                 zeronet_update_user_info() ;
             })
         }
 
+        // load, get and save messages stored in localStorage
+        // todo: move messages from "messages" to "contacts" and delete "messages" array
+        function local_storage_move_messages () {
+            var pgm = service + '.local_storage_move_messages: ', messages_str, new_messages, i, new_message ;
+            var contact_id, j, contact ;
+            messages_str = MoneyNetworkHelper.getItem('messages') ;
+            if (!messages_str) return ; // OK - messages already moved to contacts
+            new_messages = JSON.parse(messages_str);
+            // move messages to contacts
+            for (i=0 ; i<local_storage_contracts.length ; i++) {
+                contact = local_storage_contracts[i] ;
+                if (!contact.inbox) contact.index = [] ;
+                if (!contact.outbox) contact.outbox = [] ;
+            }
+            for (i=0 ; i<new_messages.length ; i++) {
+                new_message = new_messages[i] ;
+                contact_id = new_message.contact_id ;
+                contact = null ;
+                for (j=0 ; j<local_storage_contracts.length ; j++) {
+                    if (local_storage_contracts[j].contact_id == contact_id) contact = local_storage_contracts[j] ;
+                } // for j
+                if (!contact) console.log(pgm + 'Ignore message. Could not find any contact with id ' + contact_id + ', message = ' + JSON.stringify(new_message)) ;
+                else {
+                    delete new_message.contact_id ;
+                    contact.outbox.push(new_message) ;
+                }
+            } // for i
+            MoneyNetworkHelper.removeItem('messages') ;
+            MoneyNetworkHelper.setItem('contacts', JSON.stringify(local_storage_contracts)) ;
+            MoneyNetworkHelper.local_storage_save() ;
+        } // local_storage_move_messages
+
 
         // send message. stored in localStorage and in data.json (ZeroNet)
         // params:
         //   contact - from contacts array
         //   message - json - should include a secret sender_sha256 for reply
-        //   receiver_sha256: null: use pubkey. otherwise a secret received sha256 address
         //   sender_sha256:
-        //     true  - add random sender_sha256 address to message
-        //     false - no sender_sha256 address to message
-        function send_msg(contact, message, receiver_sha256, sender_sha256) {
+        //     true  - add random sender_sha256 address to message (default)
+        //     false - add no sender_sha256 address to message
+        //   receiver_sha256: null: use pubkey. otherwise a secret received sha256 address
+        function send_msg(contact, message, sender_sha256, receiver_sha256) {
             var pgm = service + '.send_message: ' ;
+            // check params - add default values
+            if ((typeof sender_sha256 == 'undefined') || (sender_sha256 == null)) sender_sha256 = true ;
+            else if (sender_sha256) sender_sha256=true ;
+            else sender_sha256=false ;
             if (!receiver_sha256) receiver_sha256 = CryptoJS.SHA256(contact.pubkey).toString();
-            if (sender_sha256) sender_sha256=true ; else sender_sha256=false ;
-            // next msg seq
+            // next local msg seq
             var local_msg_seq = MoneyNetworkHelper.getItem('msg_seq');
             if (local_msg_seq) local_msg_seq = JSON.parse(local_msg_seq) ;
             else local_msg_seq = 0 ;
             local_msg_seq++ ;
             MoneyNetworkHelper.setItem('msg_seq', JSON.stringify(local_msg_seq)) ;
             // save message in localStorage. local_storage_save_messages / zeronet_update_user_info call will encrypt and add encrypted message to data.json (ZeroNet)
-            local_storage_messages.push({
-                local_msg_seq: local_msg_seq,
-                contact_id: contact.unique_id,
-                receiver_sha256: receiver_sha256,
-                pubkey: contact.pubkey,
-                message: message,
-                sender_sha256: sender_sha256
+            if (!contact.outbox) contact.outbox = [] ;
+            contact.outbox.push({
+                local_msg_seq: local_msg_seq, // sequence
+                receiver_sha256: receiver_sha256, // receiver of outgoing msg - normally a random sha256 address received from contact
+                pubkey: contact.pubkey, // rsa encrypt with contact public key
+                message: message, // unencrypted message
+                sender_sha256: sender_sha256 // boolean: true - add random sha256 return address
             }) ;
-            local_storage_save_messages() ;
+            // update localStorage and data.json on ZeroNet
+            local_storage_save_contacts() ;
+            // return local msg seq for any cancel/delete message operations
             return local_msg_seq ;
         } // send_msg
 
+        // delete previously send message. From localStorage and ZeroNet
         function remove_msg (local_msg_seq) {
             var pgm = service + '.remove_msg: ' ;
-            var msg, zeronet_update;
+            var msg, zeronet_update, i, contact, j;
             // console.log(pgm + 'local_msg_seq = ' + local_msg_seq);
             zeronet_update = false ;
-            for (var i=local_storage_messages.length-1 ; i>=0 ; i--) {
-                msg = local_storage_messages[i] ;
-                if (msg.local_msg_seq == local_msg_seq) {
-                    if (msg.zeronet_msg_id) {
-                        // already on ZeroNet. Delete mark message
-                        msg.deleted_at = new Date().getTime() ;
-                        zeronet_update = true ;
+            for (i=0; i<local_storage_contracts.length ; i++) {
+                contact = local_storage_contracts[i] ;
+                if (!contact.outbox) contact.outbox = [] ;
+                for (j=contact.outbox.length-1 ; j >= 0 ; j--){
+                    msg = contact.outbox[j] ;
+                    if (msg.local_msg_seq == local_msg_seq) {
+                        if (msg.zeronet_msg_id) {
+                            // already on ZeroNet. Delete mark message. Will be processed in next zeronet_update_user_info call
+                            msg.deleted_at = new Date().getTime() ;
+                            zeronet_update = true ;
+                        }
+                        else contact.outbox.splice(j,1) ;
                     }
-                    else local_storage_messages.splice(i,1) ;
                 }
-            } // for i
+            }
             return zeronet_update ;
         } // remove_msg
 
+        // wait for setSiteInfo events
+        function event_file_done (event, filename) {
+            var pgm = service + '.event_file_done: ' ;
+            if (event != 'file_done') return ;
+            console.log(pgm + 'filename = ' + filename) ;
+            // a) check new incoming messages
+        }
+        ZeroFrame.bind_event(event_file_done);
+
+        // export MoneyNetworkService API
         return {
             get_tags: get_tags,
             get_privacy_options: get_privacy_options,
@@ -1341,9 +1431,7 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
             local_storage_load_contacts: local_storage_load_contacts,
             local_storage_get_contacts: local_storage_get_contacts,
             local_storage_save_contacts: local_storage_save_contacts,
-            local_storage_load_messages: local_storage_load_messages,
-            local_storage_get_messages: local_storage_get_messages,
-            local_storage_save_messages: local_storage_save_messages,
+            local_storage_move_messages: local_storage_move_messages,
             send_msg: send_msg,
             remove_msg: remove_msg
         };
@@ -1413,7 +1501,7 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
                 // load user information from localStorage
                 moneyNetworkService.load_user_info() ;
                 moneyNetworkService.local_storage_load_contacts() ;
-                moneyNetworkService.local_storage_load_messages() ;
+                moneyNetworkService.local_storage_move_messages() ;
                 var user_info = moneyNetworkService.get_user_info() ;
                 var empty_user_info_str = JSON.stringify([moneyNetworkService.empty_user_info_line()]) ;
                 if (JSON.stringify(user_info) == empty_user_info_str) $location.path('/user');
@@ -1433,7 +1521,7 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
         // get contracts. two different types of contacts:
         // a) contacts stored in localStorage
         self.contacts = moneyNetworkService.local_storage_get_contacts() ; // array with contacts from localStorage
-        // b) search for new contacts using user info (search and hidden keywords only)
+        // b) search for new ZeroNet contacts using user info (Search and Hidden keywords)
         self.zeronet_search_contracts = function() {
             MoneyNetworkHelper.zeronet_contact_search(self.contacts, function () {$scope.$apply()}) ;
         };
@@ -1540,7 +1628,7 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
                 if (['Public','Unverified'].indexOf(user_info[i].privacy) == -1) continue ;
                 message.search.push({tag: user_info[i].tag, value: user_info[i].value, privacy: user_info[i].privacy}) ;
             } // for i
-            contact.add_contact_msg = moneyNetworkService.send_msg(contact, message, null, true) ;
+            contact.add_contact_msg = moneyNetworkService.send_msg(contact, message, true, null) ;
             moneyNetworkService.local_storage_save_contacts() ;
             MoneyNetworkHelper.local_storage_save() ;
         };
@@ -1566,11 +1654,12 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
             var pgm = controller + '.remove_contact: ' ;
             var zeronet_update ;
             contact.type = 'new' ;
-            zeronet_update = moneyNetworkService.remove_msg(contact.add_contact_msg) ;
+            // cancel/delete previous "contact added" message. add add_contact
+            moneyNetworkService.remove_msg(contact.add_contact_msg) ;
             // console.log(pgm + 'zeronet_update = ' + zeronet_update);
             delete contact.add_contact_msg ;
             moneyNetworkService.local_storage_save_contacts() ;
-            if (zeronet_update) moneyNetworkService.local_storage_save_messages() ;
+            if (zeronet_update) moneyNetworkService.local_storage_save_contacts() ;
             else MoneyNetworkHelper.local_storage_save() ;
         };
 

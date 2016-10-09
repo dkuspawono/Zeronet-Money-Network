@@ -18,6 +18,7 @@ ZeroFrame = (function() {
         this.wrapper_nonce = document.location.href.replace(/.*wrapper_nonce=([A-Za-z0-9]+).*/, "$1");
         this.connect();
         this.next_message_id = 1;
+        this.event_callbacks = [] ;
         this.init();
     }
 
@@ -54,11 +55,20 @@ ZeroFrame = (function() {
         }
     };
 
+    ZeroFrame.prototype.bind_event = function (fnc) {
+        if (this.event_callbacks.indexOf(fnc) != -1) return ;
+        this.event_callbacks.push(fnc);
+    };
+
     ZeroFrame.prototype.route = function(cmd, message) {
         // this.log("ZeroFrame.prototype.route: cmd = " + cmd + ', message = ' + JSON.stringify(message));
         if (cmd == "setSiteInfo") {
             this.site_info = message.params;
             this.checkCertUserId() ;
+            // execute any functions waiting for event
+            if (message.params.event) {
+                for (var i=0 ; i<this.event_callbacks.length ; i++) this.event_callbacks[i].apply(undefined, message.params.event);
+            }
         }
         else this.log("ZeroFrame.prototype.route - ignored command", message);
     };
