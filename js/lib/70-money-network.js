@@ -891,7 +891,6 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
             return tags ;
         }
 
-
         // convert data.json to newest version. compare dbschema.schema_changed and data.version.
         function zeronet_migrate_data (json) {
             var pgm = service + '.zeronet_migrate_data: ' ;
@@ -978,9 +977,13 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
             return MoneyNetworkHelper.generate_random_password(200);
         }
 
+        // keep track of ZeroNet fileGet/fileWrite operations. fileWrite must finish before next fileGet
+        var zeronet_file_locked = {} ;
+
         // update user_info (search words) on ZeroNet
-        function zeronet_update_user_info () {
-            var pgm = service + '. zeronet_update_user_info: ';
+        function zeronet_update_user_info (lock_pgm) {
+            var pgm = service + '. zeronet_update_user_info: ' ;
+            console.log(pgm + 'start') ;
 
             // check if auto generate cert + login in ZeroFrame was OK
             if (!ZeroFrame.site_info.cert_user_id) {
@@ -999,8 +1002,16 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
             var data_inner_path = "data/users/" + ZeroFrame.site_info.auth_address + "/data.json";
             var content_inner_path = "data/users/" + ZeroFrame.site_info.auth_address + "/content.json";
 
+            if (zeronet_file_locked[data_inner_path]) {
+                throw pgm +
+                "Error. File " + data_inner_path + ' is being updated by an other process. ' +
+                'Process with lock is ' + zeronet_file_locked[data_inner_path] + '. Process requesting lock is ' + lock_pgm ;
+                return ;
+            }
+            zeronet_file_locked[data_inner_path] = lock_pgm ;
+
             // update json table with public key and search words
-            // console.log(pgm + 'calling fileGet: inner_path = ' + data_inner_path + ', required = false');
+            console.log(pgm + 'calling fileGet');
             ZeroFrame.cmd("fileGet", {inner_path: data_inner_path, required: false}, function (data) {
                 var pgm = service + '.zeronet_update_user_info fileGet callback: ' ;
                 // console.log(pgm + 'data = ' + JSON.stringify(data));
@@ -1126,8 +1137,11 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
 
                             // todo: debugging - fix problem with false/ "0" keys in msg array / messages table. See data cleanup above
                             key = encrypt.encrypt(password);
-                            if (!key) throw pgm + 'System error. Encryption error. key = ' + key + ', password = ' + password ;
-
+                            if (!key) {
+                                delete zeronet_file_locked[data_inner_path] ;
+                                throw pgm + 'System error. Encryption error. key = ' + key + ', password = ' + password ;
+                                return ;
+                            }
                             message = MoneyNetworkHelper.encrypt(JSON.stringify(contact.outbox[j].message), password);
                             delete contact.outbox[j].message.sender_sha256 ;
                             contact.outbox[j].zeronet_msg_id = CryptoJS.SHA256(message).toString();
@@ -1225,6 +1239,7 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
                 json_raw = unescape(encodeURIComponent(JSON.stringify(data, null, "\t")));
                 console.log(pgm + 'calling fileWrite: inner_path = ' + data_inner_path + ', data = ' + JSON.stringify(btoa(json_raw)));
                 ZeroFrame.cmd("fileWrite", [data_inner_path, btoa(json_raw)], function (res) {
+                    delete zeronet_file_locked[data_inner_path] ;
                     var pgm = service + '.zeronet_update_user_info fileWrite callback: ' ;
                     console.log(pgm + 'res = ' + JSON.stringify(res)) ;
                     if (res === "ok") {
@@ -1270,7 +1285,7 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
             $timeout(function () {
                 MoneyNetworkHelper.local_storage_save() ;
                 console.log(pgm + 'zeronet_update_user_info + zeronet_contact_search nor working 100% correct. There goes a few seconds between updating data.json with new search words and updating the sqlite database');
-                zeronet_update_user_info() ;
+                zeronet_update_user_info(pgm) ;
                 MoneyNetworkHelper.zeronet_contact_search(local_storage_contracts, function () {$rootScope.$apply()}) ;
             })
         }
@@ -1309,10 +1324,11 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
             return local_storage_contracts ;
         }
         function local_storage_save_contacts() {
+            var pgm = service + '.local_storage_save_contacts: ' ;
             MoneyNetworkHelper.setItem('contacts', JSON.stringify(local_storage_contracts)) ;
             $timeout(function () {
                 MoneyNetworkHelper.local_storage_save() ;
-                zeronet_update_user_info() ;
+                zeronet_update_user_info(pgm) ;
             })
         }
 
@@ -1349,7 +1365,7 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
         } // local_storage_move_messages
 
 
-        // send message. stored in localStorage and in data.json (ZeroNet)
+        // add message to contact
         // params:
         //   contact - from contacts array
         //   message - json - should include a secret sender_sha256 for reply
@@ -1357,8 +1373,8 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
         //     true  - add random sender_sha256 address to message (default)
         //     false - add no sender_sha256 address to message
         //   receiver_sha256: null: use pubkey. otherwise a secret received sha256 address
-        function send_msg(contact, message, sender_sha256, receiver_sha256) {
-            var pgm = service + '.send_message: ' ;
+        function add_msg(contact, message, sender_sha256, receiver_sha256) {
+            var pgm = service + '.add_message: ' ;
             // check params - add default values
             if ((typeof sender_sha256 == 'undefined') || (sender_sha256 == null)) sender_sha256 = true ;
             else if (sender_sha256) sender_sha256=true ;
@@ -1379,13 +1395,11 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
                 message: message, // unencrypted message
                 sender_sha256: sender_sha256 // boolean: true - add random sha256 return address
             }) ;
-            // update localStorage and data.json on ZeroNet
-            local_storage_save_contacts() ;
             // return local msg seq for any cancel/delete message operations
             return local_msg_seq ;
-        } // send_msg
+        } // add_msg
 
-        // delete previously send message. From localStorage and ZeroNet
+        // delete previously send message. returns true if ZeroNet also most be updated
         function remove_msg (local_msg_seq) {
             var pgm = service + '.remove_msg: ' ;
             var msg, zeronet_update, i, contact, j;
@@ -1432,7 +1446,7 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
             local_storage_get_contacts: local_storage_get_contacts,
             local_storage_save_contacts: local_storage_save_contacts,
             local_storage_move_messages: local_storage_move_messages,
-            send_msg: send_msg,
+            add_msg: add_msg,
             remove_msg: remove_msg
         };
         // end MoneyNetworkService
@@ -1573,6 +1587,7 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
             delete search.edit_alias ;
             $scope.$apply() ;
             // save contacts in localStorage
+            console.log(pgm + 'calling local_storage_save_contacts') ;
             moneyNetworkService.local_storage_save_contacts() ;
             MoneyNetworkHelper.local_storage_save() ;
         };
@@ -1628,7 +1643,9 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
                 if (['Public','Unverified'].indexOf(user_info[i].privacy) == -1) continue ;
                 message.search.push({tag: user_info[i].tag, value: user_info[i].value, privacy: user_info[i].privacy}) ;
             } // for i
-            contact.add_contact_msg = moneyNetworkService.send_msg(contact, message, true, null) ;
+            contact.add_contact_msg = moneyNetworkService.add_msg(contact, message, true, null) ;
+            // update localStorage and ZeroNet
+            console.log(pgm + 'calling local_storage_save_contacts');
             moneyNetworkService.local_storage_save_contacts() ;
             MoneyNetworkHelper.local_storage_save() ;
         };
@@ -1658,6 +1675,7 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
             moneyNetworkService.remove_msg(contact.add_contact_msg) ;
             // console.log(pgm + 'zeronet_update = ' + zeronet_update);
             delete contact.add_contact_msg ;
+            console.log(pgm + 'calling local_storage_save_contacts') ;
             moneyNetworkService.local_storage_save_contacts() ;
             if (zeronet_update) moneyNetworkService.local_storage_save_contacts() ;
             else MoneyNetworkHelper.local_storage_save() ;
