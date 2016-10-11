@@ -1554,7 +1554,7 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
                         console.log(pgm + 'todo: contact with unique id ' + unique_id + ' was not found. should be created. must be an add contact message');
                         // continue ;
                     }
-                    console.log(pgm + 'contact = ' + JSON.stringify(contact));
+                    console.log(pgm + 'contact = ' + JSON.stringify(contact)); //
 
                     // decrypt message and insert into contacts inbox
                     if (!encrypt) {
