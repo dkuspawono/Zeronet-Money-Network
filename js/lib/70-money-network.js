@@ -772,6 +772,8 @@ var MoneyNetworkHelper = (function () {
             crypt.getKey();
             pubkey = crypt.getPublicKey();
             prvkey = crypt.getPrivateKey();
+            console.log(pgm + 'new pubkey = ' + pubkey);
+            console.log(pgm + 'new prvkey = ' + prvkey);
             // key for symmetric encryption in localStorage - 80-120 characters (avoid using human text in encryption)
             var key_lng = Math.round(Math.random() * 40) + 80;
             var key = MoneyNetworkHelper.generate_random_password(key_lng);
@@ -1125,7 +1127,8 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
                             // not yet sent and not deleted - encrypt and insert new message in data.msg array (data.json)
                             var encrypt = new JSEncrypt();
                             encrypt.setPublicKey(contact.pubkey);
-                           delete contact.outbox[j].pubkey ;
+                            // console.log(pgm + 'encrypting using pubkey ' + contact.pubkey) ;
+                            delete contact.outbox[j].pubkey ;
                             // random sender_sha256 address? - sha256(pubkey) should only be used for first message (contact added)
                             if (contact.outbox[j].sender_sha256) {
                                 contact.outbox[j].sender_sha256 = CryptoJS.SHA256(generate_random_password()).toString();
@@ -1137,12 +1140,16 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
 
                             // todo: debugging - fix problem with false/ "0" keys in msg array / messages table. See data cleanup above
                             key = encrypt.encrypt(password);
+                            // console.log(pgm + 'password = ' + password + ', key = ' + key);
                             if (!key) {
                                 delete zeronet_file_locked[data_inner_path] ;
                                 throw pgm + 'System error. Encryption error. key = ' + key + ', password = ' + password ;
                                 return ;
                             }
                             message = MoneyNetworkHelper.encrypt(JSON.stringify(contact.outbox[j].message), password);
+                            // console.log(pgm + 'message = ' + JSON.stringify(contact.outbox[j].message)) ;
+                            // console.log(pgm + 'encrypted message = ' + message) ;
+
                             delete contact.outbox[j].message.sender_sha256 ;
                             contact.outbox[j].zeronet_msg_id = CryptoJS.SHA256(message).toString();
                             contact.outbox[j].send_at = new Date().getTime() ;
@@ -1374,10 +1381,207 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
         } // local_storage_move_messages
 
 
-        // after login - check for new ingoing messages
+        // after login - check for new ingoing messages (dbQuery)
+        var inbox_watch_sender_sha256 = [] ; // listen for sha256 addresses
+        var inbox_ignore_zeronet_msg_id = [] ; // ignore already read messages
         function local_storage_read_messages () {
             var pgm = service + '.local_storage_read_messages: ' ;
+
+            // initialize watch_sender_sha256 array with relevant sender_sha256 addresses
+            // that is sha256(pubkey) + any secret sender_sha256 reply addresses sent to contacts in money network
+            var my_pubkey, my_prvkey, i, j, contact, message ;
+            my_pubkey = MoneyNetworkHelper.getItem('pubkey') ;
+            // console.log(pgm + 'my pubkey from LS = ' + pubkey) ;
+            my_prvkey = MoneyNetworkHelper.getItem('prvkey') ;
+            // console.log(pgm + 'my prvkey from LS = ' + prvkey) ;
+
+            //// test - compare public key in LS with public key on ZeroNet
+            //query = "select pubkey from users where json_id = 20 and user_seq = 1" ;
+            //ZeroFrame.cmd("dbQuery", [query], function (res) {
+            //    var zeronet_pubkey = res[0].pubkey ;
+            //    console.log(pgm + 'my pubkey from ZeroNet = ' + zeronet_pubkey);
+            //    if (pubkey == zeronet_pubkey) console.log(pgm + 'pubkeys are identical') ;
+            //    else console.log(pgm + 'pubkeys are not identical');
+            //});
+            //
+            //// test encrypt/decrypt with a dummy message
+            //(function () {
+            //    var pgm = 'test encrypt/decrypt: ';
+            //    console.log(pgm + 'testing');
+            //
+            //    // var pubkey = getItem('pubkey');
+            //    // var prvkey = getItem('prvkey');
+            //    //var crypt = new JSEncrypt({default_key_size: 2048});
+            //    //crypt.getKey();
+            //    //pubkey = crypt.getPublicKey();
+            //    //prvkey = crypt.getPrivateKey();
+            //
+            //    // todo: compare public key in LS with public key on ZeroNet
+            //
+            //
+            //
+            //    var message1_json = {test: 'this is a test'} ;
+            //    var message1_str = JSON.stringify(message1_json);
+            //    // encrypt with public key
+            //    var encrypt = new JSEncrypt();
+            //    encrypt.setPublicKey(pubkey);
+            //    var password1 = MoneyNetworkHelper.generate_random_password(200);
+            //    var key1 = encrypt.encrypt(password1);
+            //    console.log(pgm + 'key1 = ' + key1);
+            //    var message1_enc = MoneyNetworkHelper.encrypt(message1_str, password1);
+            //    // decrypt with private key
+            //    var message2_enc = message1_enc ;
+            //    var key2 = key1 ;
+            //    encrypt = new JSEncrypt();
+            //    encrypt.setPrivateKey(prvkey);
+            //    var password2 = encrypt.decrypt(key2);
+            //    console.log(pgm + 'password2 = ' + password2);
+            //    var message2_str = MoneyNetworkHelper.decrypt(message2_enc, password2);
+            //    var message2_json = JSON.parse(message2_str);
+            //    if (message1_str == message2_str) console.log(pgm + 'OK') ;
+            //    else console.log(pgm + 'failed. message1 = ' + message1_str + ', message2 = ' + message2_str);
+            //})() ;
+
+            inbox_watch_sender_sha256.splice(0, inbox_watch_sender_sha256.length);
+            inbox_watch_sender_sha256.push(CryptoJS.SHA256(my_pubkey).toString());
+            for (i=0 ; i<local_storage_contracts.length ; i++) {
+                contact = local_storage_contracts[i] ;
+                // ignore already read messages
+                if (!contact.inbox) contact.inbox = [] ;
+                for (j=0 ; j<contact.inbox.length ; j++) {
+                    message = contact.inbox[j] ;
+                    if (message.zeronet_msg_id) inbox_ignore_zeronet_msg_id.push(message.zeronet_msg_id) ;
+                } // j (inbox)
+                if (!contact.outbox) contact.outbox = [] ;
+                // check sender_sha256 addresses send to other contacts
+                for (j=0 ; j<contact.outbox.length ; j++) {
+                    message = contact.outbox[j] ;
+                    console.log(pgm + 'message = ' + JSON.stringify(message));
+                    if (message.sender_sha256) {
+                        if (inbox_watch_sender_sha256.indexOf(message.sender_sha256) == -1) inbox_watch_sender_sha256.push(message.sender_sha256);
+                    }
+                } // j (outbox)
+            } // i (contacts)
+
+            // console.log(pgm + 'inbox_watch_sender_sha256 = ' + JSON.stringify(inbox_watch_sender_sha256)) ;
+            // console.log(pgm + 'inbox_ignore_zeronet_msg_id = ' + JSON.stringify(inbox_ignore_zeronet_msg_id)) ;
+            var query =
+                "select" +
+                "  messages.user_seq, messages.receiver_sha256, messages.key, messages.message," +
+                "  messages.message_sha256, messages.timestamp, messages.json_id, " +
+                "  users.pubkey, substr(json.directory,7) auth_address " +
+                "from messages, users, json " +
+                "where ( messages.receiver_sha256 in ('" + inbox_watch_sender_sha256[0] + "'" ;
+            for (i=1 ; i<inbox_watch_sender_sha256.length ; i++) query = query + ", '" + inbox_watch_sender_sha256[i] + "'" ;
+            query = query + ')' ;
+            if (inbox_ignore_zeronet_msg_id.length > 0) {
+                query = query + " or messages.message_sha256 in ('" + inbox_ignore_zeronet_msg_id[0] + "'" ;
+                for (i=1 ; i<inbox_ignore_zeronet_msg_id.length ; i++) query = query + ", '" + inbox_ignore_zeronet_msg_id[i] + "'" ;
+            }
+            query = query + " )" +
+                "and users.json_id = messages.json_id " +
+                "and users.user_seq = messages.user_seq " +
+                "and json.json_id = messages.json_id" ;
+            // console.log(pgm + 'query = ' + query) ;
+
+            ZeroFrame.cmd("dbQuery", [query], function(res) {
+                var pgm = service + '.local_storage_read_messages dbQuery callback: ';
+                // console.log(pgm + 'res = ' + JSON.stringify(res));
+                //res = [{
+                //    "timestamp": 1476103057083,
+                //    "auth_address": "1Hzh7qdPPQQndim5cq9UpdKeBJxqzQBYx4",
+                //    "receiver_sha256": "e7fcc820791e7c9575f92b4d891760638287a40a17f67ef3f4a56e86b7d7756b",
+                //    "key": "fvljzIjj2SvFtAYsVzyAILodSvbmeGxtXmn3T0k7YZXJ2CPqJQkkzFop5Ivwb0rbnbL1pYnI3XVxAKXOIsytuzzynxtF464fhCypw2StmUl2NzwDUh8du8UW9QeXuJDoidcnvlAwN0J5n0lOTTviVkGxUCVj4Kwds27qKpDIhhsFbX975VkQbtbmkGIxgMZ3bA10B9W+YuBB/XpyyHXUtaPfYFW8ByDAaMeQLM43cukEXkyOiOCrzbTwYrKiqrMLkv3InbuHEYHY3NPA0xtL1YTE5nGsOsQKMFujmn/fI4CGG9ylcxB/IsCx+nbQhQm+TC+VGpcXgtdrVcz0JJqPUg==",
+                //    "json_id": 24,
+                //    "user_seq": 1,
+                //    "message": "U2FsdGVkX19oqJz2RoyOoyG73i2nVyRrXIiw7xyJZVn5XL7hVYhr5O3dh5VApOZrM5MJNSAVLEd9yUqCyrTaHQxg8LZrwOxrRAeQHl+cIzQX7Q+/kyPTAjs6CBCk8EWbUzfcZcfmACeh4KlddFCsVLaG/mpMib/J+UIgAvIBroIj7zCQCapzmNOwUQODbW5B",
+                //    "message_sha256": "c35761731a4b5286c758772d3bc3bc2ecd7f49041a312fad05df015a9004e804",
+                //    "pubkey": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAjVluDxwL7zcL16AaeLcW\nHWIMcMra0Al/7TNnJqtoRNoJJXc+RPV7r0YKyNHY5d9k31gNxYWNA4aLqrc4cevN\namnk6qIKqK0HHT8kXIkxn7qm62/zn1uu4PQhWqab38GT70PaICC0XBJ+vHGiaxcZ\n5njwm3HMxcKigCUheHS7Qpg61mbs4LPfdXKdOw1zUI3mKNSfJmDu6gxtpbQzC0hJ\ncTym7V6RRUWCQJsLWNHcesVZLZbeECAjzRWZR62A1PDnJsuB8vYt5GV5pgrIDAYx\n1cD961mgOghkD2OZMdhp9RyWQ0mMxYqG7Gyp/HCnase8ND8+9GsQtS1YBM+FBN8E\nwQIDAQAB\n-----END PUBLIC KEY-----"
+                //}];
+                if (res.error) {
+                    ZeroFrame.cmd("wrapperNotification", ["error", "Search for new messages failed: " + res.error, 5000]);
+                    console.log(pgm + "Search for new messages failed: " + res.error);
+                    console.log(pgm + 'query = ' + query);
+                    return;
+                }
+
+                // check inbox_ignore_zeronet_msg_id array. has previously received messages been deleted on ZeroNet?
+                var inbox_ignore_zeronet_msg_id_clone = inbox_ignore_zeronet_msg_id.slice() ;
+                var i, j, contact, k, message ;
+                for (i=res.length-1 ; i>= 0 ; i--) {
+                    j = inbox_ignore_zeronet_msg_id_clone.indexOf(res[i].message_sha256) ;
+                    if (j != -1) {
+                        // previous received message is still on ZeroNet
+                        inbox_ignore_zeronet_msg_id_clone.splice(j,1) ;
+                        res.splice(i);
+                    }
+                } // for i (res)
+                if (inbox_ignore_zeronet_msg_id_clone.length > 0) {
+                    console.log(pgm + 'messages deleted on Zeronet: ' + JSON.stringify(inbox_ignore_zeronet_msg_id_clone));
+                    for (i=0 ; i<local_storage_contracts.length ; i++) {
+                        contact = local_storage_contracts[i] ;
+                        for (j=0 ; j<contact.inbox.length ; j++) {
+                            message = contact.inbox[j] ;
+                            k = inbox_ignore_zeronet_msg_id_clone.indexOf(message.zeronet_msg_id) ;
+                            if (k != -1) {
+                                // previously received message has been deleted on ZeroNet
+                                inbox_ignore_zeronet_msg_id_clone.splice(k,1);
+                                delete message.zeronet_msg_id ;
+                            }
+                        } // for j (inbox)
+                    } // for i (contacts)
+                } // if
+                if (inbox_ignore_zeronet_msg_id_clone.length > 0) {
+                    console.log(pgm + 'System error. inbox_ignore_zeronet_msg_id_clone should be empty now');
+                }
+                if (res.length == 0) {
+                    console.log(pgm + 'no new messages') ;
+                    return ;
+                }
+
+                var unique_id, contact, encrypt, password, message_str ;
+                // console.log(pgm + 'debug: contacts = ' + JSON.stringify(local_storage_contracts));
+                for (i=0 ; i<res.length ; i++) {
+                    unique_id = CryptoJS.SHA256(res[i].auth_address + '/'  + res[i].pubkey).toString();
+                    contact = null ;
+                    // console.log(pgm + 'debug: res[' + i + '] = ' + JSON.stringify(res[i]));
+                    // console.log(pgm + 'debug: unique_id = ' + unique_id);
+                    for (j=0 ; j<local_storage_contracts.length ; j++) {
+                        if (local_storage_contracts[j].unique_id == unique_id) contact = local_storage_contracts[j] ;
+                    }
+                    // todo: it looks like search contacts are not working 100% correct ....
+                    if (!contact) {
+                        console.log(pgm + 'todo: contact with unique id ' + unique_id + ' was not found. should be created. must be an add contact message');
+                        // continue ;
+                    }
+                    console.log(pgm + 'contact = ' + JSON.stringify(contact));
+
+                    // decrypt message and insert into contacts inbox
+                    if (!encrypt) {
+                        encrypt = new JSEncrypt();
+                        // console.log(pgm + 'prvkey = ' + prvkey);
+                        encrypt.setPrivateKey(my_prvkey);
+                    }
+                    // console.log(pgm + 'received key = ' + res[i].key) ;
+                    password = encrypt.decrypt(res[i].key);
+                    // console.log(pgm + 'decrypted key = ' + password);
+                    try {
+                        message_str = MoneyNetworkHelper.decrypt(res[i].message, password)
+                    }
+                    catch (err) {
+                        console.log(pgm + 'Ignoring symmetric decrypt error ' + err.message) ;
+                        continue ;
+                    }
+                    message = JSON.parse(message_str) ;
+                    console.log(pgm + 'decrypted message = ' + message_str) ;
+
+                } // for i (res)
+
+            });
+
+
             console.log(pgm + 'not yet implemented');
+
         } // local_storage_read_messages
 
 
