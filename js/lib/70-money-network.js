@@ -905,6 +905,11 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
             .when('/about', {
                 templateUrl: 'about.html'
             })
+            .when('/chat/:unique_id', {
+                templateUrl: 'chat.html',
+                controller: 'ChatCtrl as c',
+                resolve: {check_auth: check_auth_resolve}
+            })
             .when('/contacts', {
                 templateUrl: 'contacts.html',
                 controller: 'ContactCtrl as c',
@@ -1288,15 +1293,19 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
                     data.msg.splice(i,1) ;
                 } // for i
 
-                // check file size. Try to keep filesize small for fast communication.
+                // check file size. Try to keep data.json file size small for fast communication and small site
                 // always keep msg for least hour
                 var one_hour_ago = now - 1000*60*60 ;
                 var msg_user_seqs ;
+                var my_pubkey = MoneyNetworkHelper.getItem('pubkey') ;
+                var my_pubkey_sha256 = CryptoJS.SHA256(my_pubkey).toString();
+                var inbox_message, outbox_message, zeronet_message ;
                 while (true) {
                     json_raw = unescape(encodeURIComponent(JSON.stringify(data, null, "\t")));
                     if (json_raw.length < 10000) break ; // OK - small file
-                    console.log(pgm + 'json_raw.length = ' + json_raw.length + '. removing old data.') ;
-                    // delete users without any messages (not current user)
+                    console.log(pgm + 'data.json is big. size ' + json_raw.length + '. removing old data ...') ;
+
+                    // a) delete users without any messages (not current user)
                     msg_user_seqs = [] ;
                     if (!data.msg) data.msg = [] ;
                     if (!data.search) data.search = [] ;
@@ -1312,15 +1321,64 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
                         }
                         // remove user and recheck file size
                         data.users.splice(i,1);
+                        console.log(pgm + 'data.json is big. removed user without any messages') ;
                         continue ;
                     } // for i (users)
-                    // delete old msg
+
+                    // b) cleanup msg that has been received by other contacts
+                    //    outbox.msg1.sender_sha256 == inbox.msg2.receiver_sha256
+                    //    ingoing msg2 is a response using sender_sha256 from outgoing msg1
+                    //    delete outbox.msg1 from data.msg array if not already done
+                    for (i=0 ; i<local_storage_contracts.length ; i++) {
+                        contact = local_storage_contracts[i] ;
+                        if (!contact.inbox) continue ;
+                        for (j=0 ; j<contact.inbox.length ; j++) {
+                            inbox_message = contact.inbox[j] ;
+                            if (!inbox_message.receiver_sha256) continue ;
+                            if (inbox_message.receiver_sha256 == my_pubkey_sha256) continue ;
+                            // found a message in inbox with a receiver_sha256. Find corresponding outbox message
+                            outbox_message = null ;
+                            for (k=0; k<contact.outbox.length ; k++) {
+                                if (!contact.outbox[k].sender_sha256) continue ;
+                                if (!contact.outbox[k].zeronet_msg_id) continue ;
+                                if (contact.outbox[k].sender_sha256 != inbox_message.receiver_sha256) continue ;
+                                outbox_message = contact.outbox[k] ;
+                                break ;
+                            } // for k (outbox)
+                            // todo: add a special array with sender_sha256 addresses for deleted outbox messages?
+                            if (!outbox_message) {
+                                console.log(pgm + 'System error. Could not find any outbox messages with sender_sha256 = ' + inbox_message.sender_sha256);
+                                continue ;
+                            }
+                            // outbox_message.sender_sha256 == inbox_message.receiver_sha256
+                            // check if outbox_message is in data.msg array
+                            zeronet_message = null ;
+                            for (k=data.msg.length-1 ; k >= 0 ; k--) {
+                                if (data.msg[k].message_sha256 != outbox_message.zeronet_msg_id) continue ;
+                                // found a message that could be deleted from ZeroNet
+                                zeronet_message = data.msg[k] ;
+                                data.msg.splice(k,1);
+                                delete outbox_message.zeronet_msg_id ;
+                                local_storage_updated = true ;
+                                break ;
+                            }
+                            if (!zeronet_message) continue ;
+                            // break loops. removed a message from data.msg
+                            console.log(pgm + 'data.json is big. removed outbox message received by contact') ;
+                            break ;
+                        } // for j (inbox)
+                        if (zeronet_message) break ;
+                    } // for i (contacts)
+                    if (zeronet_message) continue ;
+
+                    // c) delete old msg
                     if ((data.msg.length == 0) || (data.msg[0].timestamp > one_hour_ago)) {
                         console.log(pgm + 'no more old data to remove');
                         break ;
                     }
                     // remove old message and recheck
                     data.msg.splice(0,1);
+                    console.log(pgm + 'data.json is big. deleted old message') ;
                 } // while true
 
                 // console.log(pgm + 'localStorage.messages (3) = ' + JSON.stringify(local_storage_messages));
@@ -1391,7 +1449,7 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
             MoneyNetworkHelper.setItem('user_info', JSON.stringify(user_info)) ;
             $timeout(function () {
                 MoneyNetworkHelper.local_storage_save() ;
-                console.log(pgm + 'zeronet_update_user_info + zeronet_contact_search nor working 100% correct. There goes a few seconds between updating data.json with new search words and updating the sqlite database');
+                console.log(pgm + 'zeronet_update_user_info + zeronet_contact_search not working 100% correct. There goes a few seconds between updating data.json with new search words and updating the sqlite database');
                 zeronet_update_user_info(pgm) ;
                 MoneyNetworkHelper.zeronet_contact_search(local_storage_contracts, function () {$rootScope.$apply()}) ;
             })
@@ -1501,12 +1559,13 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
 
             // initialize watch_sender_sha256 array with relevant sender_sha256 addresses
             // that is sha256(pubkey) + any secret sender_sha256 reply addresses sent to contacts in money network
-            var my_pubkey, my_prvkey, i, j, contact, message ;
+            var my_pubkey, my_pubkey_sha256, my_prvkey, i, j, contact, message ;
             my_pubkey = MoneyNetworkHelper.getItem('pubkey') ;
+            my_pubkey_sha256 = CryptoJS.SHA256(my_pubkey).toString();
             my_prvkey = MoneyNetworkHelper.getItem('prvkey') ;
 
             inbox_watch_sender_sha256.splice(0, inbox_watch_sender_sha256.length);
-            inbox_watch_sender_sha256.push(CryptoJS.SHA256(my_pubkey).toString());
+            inbox_watch_sender_sha256.push(my_pubkey_sha256);
             for (i=0 ; i<local_storage_contracts.length ; i++) {
                 contact = local_storage_contracts[i] ;
                 // ignore already read messages
@@ -1692,10 +1751,13 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
                     inbox_message = {
                         local_msg_seq: local_msg_seq,
                         message: decrypted_message,
-                        sender_sha256: sender_sha256,
                         zeronet_msg_id: res[i].message_sha256,
+                        sender_sha256: sender_sha256,
                         sent_at: res[i].timestamp,
+                        receiver_sha256: res[i].receiver_sha256,
                         received_at: new Date().getTime()} ;
+                    if (!sender_sha256) delete inbox_message.sender_sha256 ;
+                    if (inbox_message.receiver_sha256 == my_pubkey_sha256) delete inbox_message.receiver_sha256 ;
                     console.log(pgm + 'new inbox message = ' + JSON.stringify(inbox_message));
                     contact.inbox.push(inbox_message) ;
                     res.splice(i,1) ;
@@ -1712,6 +1774,8 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
                             }) ;
                         }
                     }
+
+                    // todo:
 
                 } // for i (res)
 
@@ -1882,7 +1946,66 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
     }])
 
 
-    .controller('ContactCtrl', ['MoneyNetworkService', '$scope', '$timeout', function (moneyNetworkService, $scope, $timeout) {
+    .controller('ChatCtrl', ['MoneyNetworkService', '$scope', '$timeout', '$routeParams', '$location', function (moneyNetworkService, $scope, $timeout, $routeParams, $location) {
+        var self = this;
+        var controller = 'ChatCtrl';
+        console.log(controller + ' loaded');
+
+        self.contact = {} ;
+        var contacts = moneyNetworkService.local_storage_get_contacts() ;
+        function find_contact () {
+            var unique_id = $routeParams.unique_id ;
+            for (var i=0 ; i<contacts.length ; i++) {
+                if (contacts[i].unique_id = unique_id) { self.contact = contacts[i]; return }
+            }
+            ZeroFrame.cmd("wrapperNotification", ['error', 'Chat not possible. unknown contact ID ' + unique_id, 5000]);
+            $location.path('/home');
+            $location.replace();
+        }
+        find_contact() ;
+        console.log(controller + ': contact = ' + JSON.stringify(self.contact));
+        //contact = {
+        //    "unique_id": "d6922951a0321b926e7c65717c15a16283eb9db7a4b5a2062c9c83804e6dfb4e",
+        //    "type": "unverified",
+        //    "auth_address": "1HswdvGGQtgHT1xWaMzhkdQrjpnZECPSN1",
+        //    "cert_user_id": "1HswdvGGQtgHT@moneynetwork",
+        //    "pubkey": "-----BEGIN PUBLIC KEY-----\nMIIBITANBgkqhkiG9w0BAQEFAAOCAQ4AMIIBCQKCAQBbyWzd/9ePgFpk0VSId6fe\nChRM60XmcB2Rmxbps795LcXVn1rasYtCVqKfIviX6z9m+F8IwmfR2mTZ7b+qiddW\nYH0/WCCb8fEnA4hjuXwiULJY2PfXSxdKhaF5Jag4yyNgF99uCyUzezpIL4GQNU69\ntiVSyUwppnymL8YzoIImqLrHbuI/sH2VlNlHvZVbyl14tOkfbOHwVtuLcly+e/72\nZZfTnxnVCcVwBQdaqNNlZUnJmnVXGYvAW4+uBo4PQfJJqcK3AyR5S9xkZBX1F4KO\nzbH5O1VG5OpnJ7kdhEYqJjesglVAEzoQlSrhF98C8BrDU9afrjDek4ERMe0iOTpB\nAgMBAAE=\n-----END PUBLIC KEY-----",
+        //    "search": [{
+        //        "tag": "Last updated",
+        //        "value": 1476207714.473779,
+        //        "privacy": "Search",
+        //        "row": 1,
+        //        "$$hashKey": "object:569"
+        //    }, {"tag": "Name", "value": "test1", "privacy": "Search", "row": 2, "$$hashKey": "object:570"}],
+        //    "inbox": [{
+        //        "local_msg_seq": 10,
+        //        "message": {
+        //            "msg": "contact added",
+        //            "search": [],
+        //            "sender_sha256": "a551a1cedb90a6debf09e316d485cab2b169ebb0b50682fe55c01919e910fbda"
+        //        },
+        //        "receiver_sha256": "e7fcc820791e7c9575f92b4d891760638287a40a17f67ef3f4a56e86b7d7756b",
+        //        "sent_at": 1476174007579,
+        //        "received_at": 1476179706311
+        //    }],
+        //    "outbox": [{
+        //        "local_msg_seq": 47,
+        //        "message": {
+        //            "msgtype": "contact added",
+        //            "search": [{"tag": "Name", "value": "test1 public xxxx", "privacy": "Public"}]
+        //        },
+        //        "sender_sha256": "9c4e7093bba371cd5f211cad5924d6f36fbfd62491acd729f3e9bf9b29740369",
+        //        "zeronet_msg_id": "3cdf3a7d28211b79555566a0cd700ab6bb7b060e1a35843315dcd72aad54dda2",
+        //        "send_at": 1476272524922
+        //    }],
+        //    "$$hashKey": "object:296",
+        //    "add_contact_msg": 47
+        //};
+
+    }])
+
+
+    .controller('ContactCtrl', ['MoneyNetworkService', '$scope', '$timeout', '$location', function (moneyNetworkService, $scope, $timeout, $location) {
         var self = this;
         var controller = 'ContactCtrl';
         console.log(controller + ' loaded');
@@ -2036,7 +2159,9 @@ angular.module('MoneyNetwork', ['ngRoute', 'ngSanitize', 'ui.bootstrap'])
             ZeroFrame.cmd("wrapperNotification", ["info", "Verify contact not yet implemented", 3000]);
         };
         self.chat_contact = function (contact) {
-            ZeroFrame.cmd("wrapperNotification", ["info", "Chat with contact not yet implemented", 3000]);
+            // ZeroFrame.cmd("wrapperNotification", ["info", "Chat with contact not yet implemented", 3000]);
+            $location.path('/chat/' + contact.unique_id);
+            $location.replace();
         };
         self.remove_contact = function (contact) {
             var pgm = controller + '.remove_contact: ' ;

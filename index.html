@@ -120,6 +120,31 @@
         <!-- end auth.html -->
     </script>
 
+    <script type="text/ng-template" id="chat.html">
+        <p>
+            Privat chat with:
+        </p>
+        <table>
+            <thead>
+            <tr>
+                <th>Tag</th>
+                <th>Value</th>
+                <th>Privacy</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr><td>Cert User Id</td><td ng-bind="c.contact.cert_user_id"></td><td>Public</td></tr>
+            <tr ng-repeat="s in c.contact.search">
+                <td ng-bind-html="s.tag"></td>
+                <td ng-bind-html="s.value"></td>
+                <td ng-bind-html="s.privacy"></td>
+            </tr>
+            </tbody>
+        </table>
+
+    <!-- end chat.html -->
+    </script>
+
     <script type="text/ng-template" id="contacts.html">
         <p>
             Money Network contacts. Communication in Money Network is encrypted communication between contracts.
@@ -130,9 +155,12 @@
             Filter:
             <input type="button" value="All" ng-click="c.toogle_filter('all')" style="color: {{c.filters.all}}"/>&nbsp;
             <input type="button" value="New" ng-click="c.toogle_filter('new')" style="color: {{c.filters.new}}"/>&nbsp;
-            <input type="button" value="Unverified" ng-click="c.toogle_filter('unverified')" style="color: {{c.filters.unverified}}"/>&nbsp;
-            <input type="button" value="Verified" ng-click="c.toogle_filter('verified')" style="color: {{c.filters.verified}}"/>&nbsp;
-            <input type="button" value="Ignored" ng-click="c.toogle_filter('ignore')" style="color: {{c.filters.ignore}}"/>&nbsp;
+            <input type="button" value="Unverified" ng-click="c.toogle_filter('unverified')"
+                   style="color: {{c.filters.unverified}}"/>&nbsp;
+            <input type="button" value="Verified" ng-click="c.toogle_filter('verified')"
+                   style="color: {{c.filters.verified}}"/>&nbsp;
+            <input type="button" value="Ignored" ng-click="c.toogle_filter('ignore')"
+                   style="color: {{c.filters.ignore}}"/>&nbsp;
         </p>
         <table>
             <thead>
@@ -151,7 +179,11 @@
                 </th>
             </tr>
             </thead>
-            <tbody><tr><td colspan="5">&nbsp;</td></tr></tbody>
+            <tbody>
+            <tr>
+                <td colspan="5">&nbsp;</td>
+            </tr>
+            </tbody>
             <tbody ng-repeat="x in c.contacts|filter:c.filter_contracts">
             <tr ng-repeat="y in x.search">
                 <td ng-hide="y.edit_alias" ng-bind-html="c.get_user_info(x,y)" ng-click="c.edit_user_info(x,y)"
@@ -171,15 +203,18 @@
                     <input ng-show="x.type == 'ignore'" type="button" value="Unplonk" ng-click="c.unplonk_contact(x)"/>
                     <input ng-show="x.type == 'new'" type="button" value="Add" ng-click="c.add_contact(x)"/>
                     <input ng-show="x.type == 'ignore'" type="button" value="Add" ng-click="c.add_contact(x)"/>
-                    <input ng-show="x.type == 'unverified'" type="button" value="Remove" ng-click="c.remove_contact(x)"/>
-                    <input ng-show="x.type == 'unverified'" type="button" value="Verify" ng-click="c.verify_contact(x)"/>
+                    <input ng-show="x.type == 'unverified'" type="button" value="Remove"
+                           ng-click="c.remove_contact(x)"/>
+                    <input ng-show="x.type == 'unverified'" type="button" value="Verify"
+                           ng-click="c.verify_contact(x)"/>
                     <input ng-show="x.type != 'ignore'" type="button" value="Chat" ng-click="c.chat_contact(x)"/>
                 </td>
             </tr>
-            <tr><td colspan="5">&nbsp;</td></tr>
+            <tr>
+                <td colspan="5">&nbsp;</td>
+            </tr>
             </tbody>
         </table>
-
         <!-- end contacts.html -->
     </script>
 
@@ -194,7 +229,8 @@
             It could be name, email, phone number, foto, company name, url, GPS location or whatever.
             Real or fake values. User info are stored locally in your browser / on your device and are NOT validated by
             anyone.
-            The user identification is used when searching for contacts, verifying contacts and is displayed in contact list.
+            The user identification is used when searching for contacts, verifying contacts and is displayed in contact
+            list.
             You decide what information that is revealed to other users in the Money Network.
             You decide when to trust other users in the Money Network.
             Thank you for using the Money Network
@@ -282,7 +318,8 @@
         </form>
 
         <p>
-            todo: add a delete user data button. Delete user data from data.json. Data user data from localStorage. Log out.
+            todo: add a delete user data button. Delete user data from data.json. Data user data from localStorage. Log
+            out.
         </p>
 
         <!-- end user.html -->
